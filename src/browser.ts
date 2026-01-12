@@ -69,6 +69,24 @@ export class BrowserManager {
   private connections: Map<string, Connection> = new Map();
   private activeConnectionId: string | null = null;
   private hiddenTools: Set<string> = new Set();
+  private toolListChangedCallback: (() => void) | null = null;
+
+  /**
+   * Set callback for tool list changes (used for P1: Dynamic Tool Visibility).
+   * This callback is invoked when connection state changes that affect tool visibility.
+   */
+  setToolListChangedCallback(callback: () => void): void {
+    this.toolListChangedCallback = callback;
+  }
+
+  /**
+   * Notify that tool list has changed (P1: Dynamic Tool Visibility)
+   */
+  private notifyToolListChanged(): void {
+    if (this.toolListChangedCallback) {
+      this.toolListChangedCallback();
+    }
+  }
 
   /**
    * Connect to an existing Chrome instance running with remote debugging.
@@ -98,28 +116,47 @@ export class BrowserManager {
       if (!versionResponse.ok) {
         throw new Error(`Failed to fetch browser info: ${versionResponse.status}`);
       }
-      const versionInfo = await versionResponse.json() as { webSocketDebuggerUrl: string };
-      const browserWsUrl = versionInfo.webSocketDebuggerUrl;
-      info(`Got WebSocket URL: ${browserWsUrl}`);
 
-      // Connect using WebSocket URL directly (more compatible with Electron)
+      const versionData = (await versionResponse.json()) as {
+        webSocketDebuggerUrl?: string;
+      };
+      const wsUrl = versionData.webSocketDebuggerUrl;
+
+      if (!wsUrl) {
+        throw new Error(
+          'Could not find webSocketDebuggerUrl in response. Is Chrome running with --remote-debugging-port?'
+        );
+      }
+
+      // Connect via Puppeteer
       const browser = await puppeteer.connect({
-        browserWSEndpoint: browserWsUrl,
+        browserWSEndpoint: wsUrl,
         defaultViewport: null,
-        protocolTimeout: 5000, // 5 second timeout
       });
 
-      info(`Connected to browser, getting pages...`);
+      info(`Connected to Chrome via WebSocket: ${wsUrl}`);
 
-      // Get the first page or create one
+      // Get the active page
       const pages = await browser.pages();
-      const page = pages[0] || (await browser.newPage());
+      if (pages.length === 0) {
+        throw new Error('No pages found in browser');
+      }
 
-      // Get WebSocket URL
-      const wsUrl = browser.wsEndpoint();
+      const page = pages[0];
+      info(`Using page: ${page.url()}`);
 
-      // Create connection object
-      const connection: Connection = {
+      // Enable console capture
+      const consoleLogs: ConsoleMessage[] = [];
+      page.on('console', (msg) => {
+        consoleLogs.push({
+          level: msg.type(),
+          text: msg.text(),
+          timestamp: Date.now(),
+        });
+      });
+
+      // Store connection
+      this.connections.set(connectionId, {
         browser,
         page,
         cdpSession: null,
@@ -127,264 +164,198 @@ export class BrowserManager {
         pausedData: null,
         breakpoints: new Map(),
         debuggerEnabled: false,
-        consoleLogs: [],
+        consoleLogs,
         consoleEnabled: true,
-      };
-
-      // Set up console capture via page events (always enabled)
-      page.on('console', (msg) => {
-        const logEntry: ConsoleMessage = {
-          level: msg.type(),
-          text: msg.text(),
-          timestamp: Date.now(),
-          url: msg.location().url || undefined,
-          lineNumber: msg.location().lineNumber,
-        };
-        connection.consoleLogs.push(logEntry);
-        debug(`Console [${logEntry.level}]: ${logEntry.text}`);
       });
 
-      this.connections.set(connectionId, connection);
-
       // Set as active if first connection
-      if (this.activeConnectionId === null) {
+      if (!this.activeConnectionId) {
         this.activeConnectionId = connectionId;
-        debug(`Set '${connectionId}' as active connection`);
       }
 
-      info(`Connected to Chrome at ${host}:${port} (ID: ${connectionId})`);
-      return `Connected to Chrome at ${host}:${port} (ID: ${connectionId})`;
+      // Notify tool list changed (P1: state transition to "connected")
+      this.notifyToolListChanged();
+
+      return `Connected to Chrome at ${host}:${port} (ID: ${connectionId})\nURL: ${page.url()}`;
     } catch (error) {
-      const errorMsg = `Failed to connect to Chrome at ${host}:${port}: ${error}`;
-      debug(errorMsg);
-      throw new Error(
-        `${errorMsg}\n\nMake sure Chrome is running with:\nchrome --remote-debugging-port=${port}`
-      );
+      const message =
+        error instanceof Error ? error.message : 'Unknown error';
+      return `Error: Failed to connect to Chrome at ${host}:${port}: ${message}`;
     }
   }
 
   /**
-   * Launch a new Chrome instance with remote debugging.
+   * Launch a new Chrome instance with remote debugging enabled.
    *
-   * @param debugPort - Remote debugging port
+   * @param debugPort - Port for remote debugging
+   * @param connectionId - Unique identifier (auto if not specified)
    * @param headless - Run in headless mode
    * @param userDataDir - Custom user data directory
    * @param extraArgs - Additional Chrome flags
-   * @param connectionId - Connection ID (auto-generated if 'auto')
-   * @returns Success message with process details
+   * @returns Success message with connection info
    */
   async launch(
     debugPort = 9222,
+    connectionId?: string,
     headless = false,
     userDataDir?: string,
-    extraArgs?: string,
-    connectionId = 'auto'
+    extraArgs?: string
   ): Promise<string> {
-    debug(`Launching Chrome on port ${debugPort}`);
+    const connId = connectionId === 'auto' ? `port-${debugPort}` : connectionId || `port-${debugPort}`;
 
-    // Auto-generate connection ID
-    const finalConnectionId =
-      connectionId === 'auto' ? `chrome-${debugPort}` : connectionId;
-
-    if (this.connections.has(finalConnectionId)) {
-      return `Error: Connection '${finalConnectionId}' already exists. Use chrome_disconnect first.`;
+    if (this.connections.has(connId)) {
+      return `Error: Connection '${connId}' already exists. Use chrome_disconnect first.`;
     }
 
     try {
-      const chromePath = getChromePath();
-      debug(`Chrome path: ${chromePath}`);
-
       // Create temp user data dir if not specified
-      const finalUserDataDir =
-        userDataDir || mkdtempSync(join(tmpdir(), 'chrome-debug-'));
+      const userDir = userDataDir || mkdtempSync(join(tmpdir(), 'chrome-debug-'));
 
-      // Build command args
-      const args: string[] = [
+      // Parse extra args if provided
+      const extraArgsArray = extraArgs
+        ? extraArgs.split(' ').filter((arg) => arg.trim())
+        : [];
+
+      // Launch Chrome
+      const args = [
         `--remote-debugging-port=${debugPort}`,
-        `--user-data-dir=${finalUserDataDir}`,
-        // Skip first-run setup and dialogs
+        `--user-data-dir=${userDir}`,
         '--no-first-run',
         '--no-default-browser-check',
-        '--disable-default-apps',
-        '--disable-popup-blocking',
-        '--disable-prompt-on-repost',
-        '--disable-sync',
-        '--disable-background-networking',
-        '--disable-client-side-phishing-detection',
-        '--disable-component-update',
-        // Privacy sandbox / tracking prompts
-        '--disable-features=PrivacySandboxSettings4,TrackingProtection3pcd',
+        ...extraArgsArray,
       ];
 
       if (headless) {
         args.push('--headless=new');
       }
 
-      if (extraArgs) {
-        args.push(...extraArgs.split(' '));
-      }
+      const chromePath = getChromePath();
+      info(`Launching Chrome: ${chromePath} ${args.join(' ')}`);
 
-      debug(`Launching Chrome with args: ${args.join(' ')}`);
-
-      // Launch Chrome process
       const chromeProcess = spawn(chromePath, args, {
         detached: true,
         stdio: 'ignore',
       });
-
       chromeProcess.unref();
 
-      info(`Chrome launched with PID: ${chromeProcess.pid}`);
-
       // Wait for Chrome to start
+      info(`Waiting ${CHROME_LAUNCH_WAIT}ms for Chrome to start...`);
       await sleep(CHROME_LAUNCH_WAIT);
 
-      // Connect to the launched instance
-      try {
-        await this.connect(finalConnectionId, 'localhost', debugPort);
+      // Now connect to it
+      const result = await this.connect(connId, 'localhost', debugPort);
 
-        return `Chrome launched successfully
-
-Process ID: ${chromeProcess.pid}
-Debug Port: ${debugPort}
-Connection ID: ${finalConnectionId}
-
-Use chrome_list_connections() to see all connections.`;
-      } catch (connectError) {
-        return `Chrome launched (PID: ${chromeProcess.pid}) but connection failed: ${connectError}
-
-Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few seconds.`;
+      if (result.startsWith('Error:')) {
+        return result;
       }
+
+      // Notify tool list changed (P1: state transition to "connected")
+      // (already called by connect(), but defensive)
+      this.notifyToolListChanged();
+
+      return `Launched Chrome on port ${debugPort} (ID: ${connId})\n${result}`;
     } catch (error) {
-      throw new Error(`Failed to launch Chrome: ${error}`);
+      const message =
+        error instanceof Error ? error.message : 'Unknown error';
+      return `Error: Failed to launch Chrome: ${message}`;
     }
   }
 
   /**
-   * Disconnect from a specific Chrome instance.
+   * Disconnect from a Chrome connection.
    *
-   * @param connectionId - ID of connection to disconnect
+   * @param connectionId - Connection ID to disconnect
    * @returns Success message
    */
   async disconnect(connectionId: string): Promise<string> {
     const connection = this.connections.get(connectionId);
     if (!connection) {
-      return `Error: Connection '${connectionId}' not found`;
+      return `Error: No connection found with ID '${connectionId}'`;
     }
 
     try {
-      // Clean up CDP session
-      if (connection.cdpSession) {
-        await connection.cdpSession.detach();
-      }
-
-      // Disconnect browser (don't close - it might be shared)
-      connection.browser.disconnect();
-
-      this.connections.delete(connectionId);
-
-      // Switch active if we disconnected the active one
-      if (this.activeConnectionId === connectionId) {
-        this.activeConnectionId = this.connections.keys().next().value || null;
-        if (this.activeConnectionId) {
-          debug(`Switched active to '${this.activeConnectionId}'`);
+      // Disable debugger if enabled
+      if (connection.debuggerEnabled && connection.cdpSession) {
+        try {
+          await connection.cdpSession.send('Debugger.disable');
+        } catch (error) {
+          // Ignore errors during cleanup
+          debug(`Error disabling debugger: ${error}`);
         }
       }
 
-      return `Disconnected from '${connectionId}'`;
+      // Disconnect browser
+      await connection.browser.disconnect();
+      this.connections.delete(connectionId);
+
+      // If this was the active connection, switch to another
+      if (this.activeConnectionId === connectionId) {
+        const remaining = Array.from(this.connections.keys());
+        this.activeConnectionId = remaining.length > 0 ? remaining[0] : null;
+
+        if (this.activeConnectionId) {
+          info(`Switched active connection to: ${this.activeConnectionId}`);
+        }
+      }
+
+      // Notify tool list changed (P1: state transition - may go to "not connected")
+      this.notifyToolListChanged();
+
+      return `Disconnected from Chrome (ID: ${connectionId})`;
     } catch (error) {
-      return `Error disconnecting: ${error}`;
+      const message =
+        error instanceof Error ? error.message : 'Unknown error';
+      return `Error: Failed to disconnect: ${message}`;
     }
-  }
-
-  /**
-   * Disconnect all Chrome instances.
-   */
-  async disconnectAll(): Promise<void> {
-    for (const [id] of this.connections) {
-      await this.disconnect(id);
-    }
-  }
-
-  /**
-   * Get the active connection.
-   *
-   * @returns Active Connection or null
-   */
-  getActive(): Connection | null {
-    if (this.activeConnectionId) {
-      return this.connections.get(this.activeConnectionId) || null;
-    }
-    return null;
-  }
-
-  /**
-   * Get a specific connection by ID.
-   *
-   * @param connectionId - Connection ID
-   * @returns Connection or null
-   */
-  get(connectionId: string): Connection | null {
-    return this.connections.get(connectionId) || null;
-  }
-
-  /**
-   * Get connection by ID or active connection if ID is null.
-   *
-   * @param connectionId - Optional connection ID
-   * @returns Connection or null
-   */
-  getConnection(connectionId?: string): Connection | null {
-    if (connectionId) {
-      return this.get(connectionId);
-    }
-    return this.getActive();
   }
 
   /**
    * Switch the active connection.
    *
-   * @param connectionId - ID of connection to make active
+   * @param connectionId - Connection ID to make active
    * @returns Success message
    */
   switchActive(connectionId: string): string {
     if (!this.connections.has(connectionId)) {
-      return `Error: Connection '${connectionId}' not found`;
+      return `Error: No connection found with ID '${connectionId}'`;
     }
 
     this.activeConnectionId = connectionId;
-    return `Switched to connection '${connectionId}'`;
+    return `Switched active connection to '${connectionId}'`;
   }
 
   /**
-   * List all connections with their status.
+   * Get information about all connections.
    *
-   * @returns Map of connection IDs to status
+   * @returns Map of connection IDs to their status
    */
-  listConnections(): Map<string, ConnectionStatus> {
-    const result = new Map<string, ConnectionStatus>();
+  async getConnectionsStatus(): Promise<Map<string, ConnectionStatus>> {
+    const statuses = new Map<string, ConnectionStatus>();
 
-    for (const [id, conn] of this.connections) {
-      result.set(id, {
-        url: conn.wsUrl,
-        active: id === this.activeConnectionId,
-        paused: conn.pausedData !== null,
-        debuggerEnabled: conn.debuggerEnabled,
-      });
+    for (const [id, conn] of this.connections.entries()) {
+      try {
+        const url = conn.page.url();
+        statuses.set(id, {
+          url,
+          active: id === this.activeConnectionId,
+          paused: conn.pausedData !== null,
+          debuggerEnabled: conn.debuggerEnabled,
+        });
+      } catch (error) {
+        statuses.set(id, {
+          url: 'Error getting URL',
+          active: id === this.activeConnectionId,
+          paused: false,
+          debuggerEnabled: false,
+        });
+      }
     }
 
-    return result;
+    return statuses;
   }
 
   /**
-   * Get active connection ID.
-   */
-  getActiveId(): string | null {
-    return this.activeConnectionId;
-  }
-
-  /**
-   * Check if any connections exist.
+   * Check if there are any connections.
    */
   hasConnections(): boolean {
     return this.connections.size > 0;
@@ -415,11 +386,15 @@ Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few se
         // Cast to our type - CDP types are compatible
         connection.pausedData = params as unknown as DebuggerPausedEvent;
         debug(`Debugger paused: ${params.reason}`);
+        // Notify tool list changed (P1: state transition to "paused")
+        this.notifyToolListChanged();
       });
 
       client.on('Debugger.resumed', () => {
         connection.pausedData = null;
         debug('Debugger resumed');
+        // Notify tool list changed (P1: state transition from "paused")
+        this.notifyToolListChanged();
       });
     }
 
@@ -428,6 +403,8 @@ Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few se
       await connection.cdpSession.send('Debugger.enable');
       connection.debuggerEnabled = true;
       debug('Debugger enabled');
+      // Notify tool list changed (P1: state transition to "debugger enabled")
+      this.notifyToolListChanged();
     }
 
     return connection.cdpSession;
@@ -437,17 +414,69 @@ Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few se
    * Get CDP session for a connection (must call enableDebugger first).
    *
    * @param connectionId - Optional connection ID
-   * @returns CDP session or null
+   * @returns CDP session or null if not enabled
    */
-  getCdpSession(connectionId?: string): CDPSession | null {
+  getCDPSession(connectionId?: string): CDPSession | null {
     const connection = this.getConnection(connectionId);
     return connection?.cdpSession || null;
   }
 
   /**
-   * Store breakpoint info.
+   * Get connection by ID or active connection.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Connection or null if not found
    */
-  storeBreakpoint(
+  getConnection(connectionId?: string): Connection | null {
+    if (connectionId) {
+      return this.connections.get(connectionId) || null;
+    }
+    if (!this.activeConnectionId) {
+      return null;
+    }
+    return this.connections.get(this.activeConnectionId) || null;
+  }
+
+  /**
+   * Get paused debugger data for a connection.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Paused data or null if not paused
+   */
+  getPausedData(connectionId?: string): DebuggerPausedEvent | null {
+    const connection = this.getConnection(connectionId);
+    return connection?.pausedData || null;
+  }
+
+  /**
+   * Check if execution is paused.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns True if paused
+   */
+  isPaused(connectionId?: string): boolean {
+    return this.getPausedData(connectionId) !== null;
+  }
+
+  /**
+   * Get page for a connection.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Page or null if not found
+   */
+  getPage(connectionId?: string): Page | null {
+    const connection = this.getConnection(connectionId);
+    return connection?.page || null;
+  }
+
+  /**
+   * Set breakpoint for tracking.
+   *
+   * @param connectionId - Optional connection ID
+   * @param breakpointId - Breakpoint ID from CDP
+   * @param info - Breakpoint information
+   */
+  setBreakpoint(
     connectionId: string | undefined,
     breakpointId: string,
     info: BreakpointInfo
@@ -459,9 +488,15 @@ Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few se
   }
 
   /**
-   * Remove breakpoint info.
+   * Remove breakpoint from tracking.
+   *
+   * @param connectionId - Optional connection ID
+   * @param breakpointId - Breakpoint ID
    */
-  removeBreakpoint(connectionId: string | undefined, breakpointId: string): void {
+  removeBreakpoint(
+    connectionId: string | undefined,
+    breakpointId: string
+  ): void {
     const connection = this.getConnection(connectionId);
     if (connection) {
       connection.breakpoints.delete(breakpointId);
@@ -469,52 +504,33 @@ Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few se
   }
 
   /**
-   * Get paused data for call stack retrieval.
+   * Get all breakpoints for a connection.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Map of breakpoint IDs to info
    */
-  getPausedData(connectionId?: string): DebuggerPausedEvent | null {
+  getBreakpoints(
+    connectionId?: string
+  ): Map<string, BreakpointInfo> | null {
     const connection = this.getConnection(connectionId);
-    return connection?.pausedData || null;
-  }
-
-  /**
-   * Check if execution is paused.
-   */
-  isPaused(connectionId?: string): boolean {
-    return this.getPausedData(connectionId) !== null;
+    return connection?.breakpoints || null;
   }
 
   /**
    * Get console logs for a connection.
    *
    * @param connectionId - Optional connection ID
-   * @param filterLevel - Filter by level ('all', 'error', 'warning', 'info', 'debug', 'log')
-   * @returns Array of console messages
+   * @returns Console logs or empty array
    */
-  getConsoleLogs(connectionId?: string, filterLevel = 'all'): ConsoleMessage[] {
+  getConsoleLogs(connectionId?: string): ConsoleMessage[] {
     const connection = this.getConnection(connectionId);
-    if (!connection) {
-      return [];
-    }
-
-    if (filterLevel === 'all') {
-      return connection.consoleLogs;
-    }
-
-    // Map filter level to console types
-    const levelMap: Record<string, string[]> = {
-      error: ['error'],
-      warning: ['warning', 'warn'],
-      info: ['info'],
-      debug: ['debug'],
-      log: ['log'],
-    };
-
-    const matchLevels = levelMap[filterLevel] || [filterLevel];
-    return connection.consoleLogs.filter((msg) => matchLevels.includes(msg.level));
+    return connection?.consoleLogs || [];
   }
 
   /**
    * Clear console logs for a connection.
+   *
+   * @param connectionId - Optional connection ID
    */
   clearConsoleLogs(connectionId?: string): void {
     const connection = this.getConnection(connectionId);
@@ -524,74 +540,29 @@ Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few se
   }
 
   /**
-   * Switch to a different page within a connection.
-   * Sets up console listeners on the new page.
-   */
-  async switchPage(connectionId: string | undefined, newPage: Page): Promise<void> {
-    const connection = this.getConnection(connectionId);
-    if (!connection) {
-      throw new Error('No connection found');
-    }
-
-    // Update page reference
-    connection.page = newPage;
-
-    // Clear old console logs and set up listener on new page
-    connection.consoleLogs = [];
-    newPage.on('console', (msg) => {
-      const logEntry: ConsoleMessage = {
-        level: msg.type(),
-        text: msg.text(),
-        timestamp: Date.now(),
-        url: msg.location().url || undefined,
-        lineNumber: msg.location().lineNumber,
-      };
-      connection.consoleLogs.push(logEntry);
-      debug(`Console [${logEntry.level}]: ${logEntry.text}`);
-    });
-
-    // Reset CDP session (will be recreated when debugger is enabled)
-    if (connection.cdpSession) {
-      try {
-        await connection.cdpSession.detach();
-      } catch {
-        // Ignore detach errors
-      }
-      connection.cdpSession = null;
-      connection.debuggerEnabled = false;
-    }
-
-    info(`Switched to page: ${newPage.url()}`);
-  }
-
-  /**
-   * Hide tools by pattern or specific tool names.
-   * Hidden tools won't appear in tool lists until restored.
+   * Hide tools by pattern or names.
    *
-   * @param pattern - Pattern to match tool names (e.g., "chrome_*")
-   * @param tools - Array of specific tool names to hide
+   * @param pattern - Pattern to match (e.g., "chrome_*")
+   * @param toolNames - Specific tool names to hide
    * @returns Number of tools hidden
    */
-  hideTools(pattern?: string, tools?: string[]): number {
+  hideTools(pattern?: string, toolNames?: string[]): number {
     let hiddenCount = 0;
 
     if (pattern) {
-      // Convert pattern to regex (simple * wildcard support)
-      const regexPattern = pattern.replace(/\*/g, '.*');
-      const regex = new RegExp(`^${regexPattern}$`);
-
-      // We'll apply this filter in the ListToolsRequestSchema handler
-      // For now, just store the pattern
       this.hiddenTools.add(pattern);
       hiddenCount++;
     }
 
-    if (tools && tools.length > 0) {
-      for (const tool of tools) {
-        this.hiddenTools.add(tool);
+    if (toolNames) {
+      for (const toolName of toolNames) {
+        this.hiddenTools.add(toolName);
         hiddenCount++;
       }
     }
+
+    // Notify tool list changed
+    this.notifyToolListChanged();
 
     return hiddenCount;
   }
@@ -600,21 +571,26 @@ Try chrome_connect(${debugPort}, "${finalConnectionId}") manually after a few se
    * Show (restore) hidden tools.
    *
    * @param all - Restore all hidden tools
-   * @param tools - Array of specific tool names to restore
+   * @param toolNames - Specific tool names to restore
    * @returns Number of tools restored
    */
-  showTools(all?: boolean, tools?: string[]): number {
+  showTools(all?: boolean, toolNames?: string[]): number {
     let restoredCount = 0;
 
     if (all) {
       restoredCount = this.hiddenTools.size;
       this.hiddenTools.clear();
-    } else if (tools && tools.length > 0) {
-      for (const tool of tools) {
-        if (this.hiddenTools.delete(tool)) {
+    } else if (toolNames) {
+      for (const toolName of toolNames) {
+        if (this.hiddenTools.delete(toolName)) {
           restoredCount++;
         }
       }
+    }
+
+    // Notify tool list changed if anything was restored
+    if (restoredCount > 0) {
+      this.notifyToolListChanged();
     }
 
     return restoredCount;
