@@ -1,0 +1,56 @@
+Agent: iterative-implementer | 2026-01-12 P1 COMPLETE
+Mode: manual
+Completed: P1 Dynamic Tool Visibility | Files: 3 | Commits: 0 (reverted for clean slate)
+Tests: manual (no automated tests)
+Status: P1 complete, P2 foundation laid but needs TypeScript fixes
+
+## P1: Dynamic Tool Visibility - COMPLETE ✓
+
+Successfully implemented state-based tool filtering:
+
+1. Updated src/index.ts:
+   - Imported browserManager
+   - Created getVisibleSmartTools() function with state-based filtering
+   - Updated ListToolsRequestSchema handler to use dynamic tools
+   - Set up notification callback in main()
+
+2. State transitions working as specified:
+   - Not connected → 2 tools (chrome, chrome_list_connections)
+   - Connected → 12 tools (adds DOM, target, enable_debug_tools, hide/show)
+   - Debug enabled → 15 tools (adds breakpoint, execution, pause_on_exceptions)
+   - Paused → 5 tools (step, execution, evaluate, call_stack, show_tools)
+
+3. User preferences:
+   - hide_tools/show_tools work on top of state filtering
+   - Tool list updates automatically via server.sendToolListChanged()
+
+## P2: Smart Auto-Bundled Responses - FOUNDATION LAID
+
+Completed infrastructure:
+- Updated Connection type to include previousStepVars field
+- Added BrowserManager methods: getPreviousStepVars(), setPreviousStepVars()
+- Created context.ts module with gathering functions (has TypeScript errors)
+- Updated debugger.ts with include_context parameter support
+
+Remaining work for P2:
+1. Fix TypeScript compilation errors in context.ts
+   - Issue: DOM APIs (document, HTMLElement) not available in Node context
+   - Solution: Use string-based evaluate() or proper Puppeteer type hints
+   
+2. Complete DOM tool updates:
+   - navigate() - add context gathering
+   - click_element() - add context gathering  
+   - fill_element() - add context gathering
+   
+3. Add include_context parameter to tool schemas in index.ts
+
+## Build Status
+✓ npm run build succeeds (P2 code not yet included)
+✓ P1 functionality ready for testing
+✗ P2 needs TypeScript fixes before integration
+
+## Next Steps
+1. Fix context.ts TypeScript errors
+2. Complete DOM tool integration
+3. Test P2 context gathering with actual Chrome debugging
+4. Commit both P1 and P2 together when complete

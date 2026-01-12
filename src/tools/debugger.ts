@@ -7,6 +7,7 @@
 
 import { browserManager } from '../browser.js';
 import { successResponse, errorResponse } from '../response.js';
+import { gatherPauseContext, gatherStepContext } from './context.js';
 
 /**
  * Enable the Chrome debugger for the current connection.
@@ -389,40 +390,122 @@ export async function breakpoint(args: {
 }
 
 /**
- * CONSOLIDATED: step - Step through code (over/into/out)
+ * CONSOLIDATED (P2): step - Step through code with smart context
  *
- * Replaces debugger_step_over, debugger_step_into, and debugger_step_out with a single tool.
+ * Replaces debugger_step_over, debugger_step_into, and debugger_step_out.
+ * Auto-includes new location, local variables with [CHANGED] markers, and new console logs.
  */
 export async function step(args: {
   action: 'over' | 'into' | 'out';
+  include_context?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  if (args.action === 'over') {
-    return debuggerStepOver({ connection_id: args.connection_id });
-  } else if (args.action === 'into') {
-    return debuggerStepInto({ connection_id: args.connection_id });
-  } else if (args.action === 'out') {
-    return debuggerStepOut({ connection_id: args.connection_id });
-  } else {
-    return errorResponse(`Invalid action: ${args.action}. Must be 'over', 'into', or 'out'.`);
+  const includeContext = args.include_context ?? true;
+
+  try {
+    const cdpSession = browserManager.getCDPSession(args.connection_id);
+    if (!cdpSession) {
+      return errorResponse('Debugger not enabled. Call debugger_enable() first.');
+    }
+
+    if (!browserManager.isPaused(args.connection_id)) {
+      return errorResponse('Execution is not paused.');
+    }
+
+    // Get previous vars before stepping (for change detection)
+    const previousVars = browserManager.getPreviousStepVars(args.connection_id);
+
+    // Execute step command
+    const stepMethod: Record<string, string> = {
+      over: 'Debugger.stepOver',
+      into: 'Debugger.stepInto',
+      out: 'Debugger.stepOut',
+    };
+
+    const method = stepMethod[args.action];
+    if (!method) {
+      return errorResponse(`Invalid action: ${args.action}. Must be 'over', 'into', or 'out'.`);
+    }
+
+    await cdpSession.send(method as any);
+
+    // Wait a bit for debugger to pause at new location
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    let response = `Stepped ${args.action} successfully.`;
+
+    // Add context if requested
+    if (includeContext && browserManager.isPaused(args.connection_id)) {
+      try {
+        const context = await gatherStepContext(args.connection_id, previousVars);
+        response += context;
+      } catch (err) {
+        // Context gathering failed, continue without it
+      }
+    }
+
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(`Error stepping ${args.action}: ${error}`);
   }
 }
 
 /**
- * CONSOLIDATED: execution - Resume or pause execution
+ * CONSOLIDATED (P2): execution - Resume or pause with smart context
  *
- * Replaces debugger_resume and debugger_pause with a single tool.
+ * Replaces debugger_resume and debugger_pause.
+ * When paused, auto-includes call stack, local variables, and console logs.
  */
 export async function execution(args: {
   action: 'resume' | 'pause';
+  include_context?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  if (args.action === 'resume') {
-    return debuggerResume({ connection_id: args.connection_id });
-  } else if (args.action === 'pause') {
-    return debuggerPause({ connection_id: args.connection_id });
-  } else {
-    return errorResponse(`Invalid action: ${args.action}. Must be 'resume' or 'pause'.`);
+  const includeContext = args.include_context ?? true;
+
+  try {
+    const cdpSession = browserManager.getCDPSession(args.connection_id);
+    if (!cdpSession) {
+      return errorResponse('Debugger not enabled. Call debugger_enable() first.');
+    }
+
+    if (args.action === 'resume') {
+      if (!browserManager.isPaused(args.connection_id)) {
+        return errorResponse('Execution is not paused.');
+      }
+
+      await cdpSession.send('Debugger.resume');
+      return successResponse('Execution resumed. Will pause at next breakpoint or debugger statement.');
+
+    } else if (args.action === 'pause') {
+      if (browserManager.isPaused(args.connection_id)) {
+        return errorResponse('Execution is already paused.');
+      }
+
+      await cdpSession.send('Debugger.pause');
+
+      // Wait a bit for debugger to pause
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      let response = 'Execution paused.';
+
+      // Add context if requested and now paused
+      if (includeContext && browserManager.isPaused(args.connection_id)) {
+        try {
+          const context = await gatherPauseContext(args.connection_id);
+          response += context;
+        } catch (err) {
+          // Context gathering failed, continue without it
+        }
+      }
+
+      return successResponse(response);
+
+    } else {
+      return errorResponse(`Invalid action: ${args.action}. Must be 'resume' or 'pause'.`);
+    }
+  } catch (error) {
+    return errorResponse(`Error with execution ${args.action}: ${error}`);
   }
 }
 

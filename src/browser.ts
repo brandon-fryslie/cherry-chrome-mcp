@@ -597,6 +597,30 @@ export class BrowserManager {
   }
 
   /**
+   * Get previous step variables for change tracking (P2).
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Previous variables or undefined if none
+   */
+  getPreviousStepVars(connectionId?: string): Record<string, string> | undefined {
+    const connection = this.getConnection(connectionId);
+    return connection?.previousStepVars;
+  }
+
+  /**
+   * Set previous step variables for change tracking (P2).
+   *
+   * @param connectionId - Optional connection ID
+   * @param vars - Variable name to value mapping
+   */
+  setPreviousStepVars(connectionId: string | undefined, vars: Record<string, string>): void {
+    const connection = this.getConnection(connectionId);
+    if (connection) {
+      connection.previousStepVars = vars;
+    }
+  }
+
+  /**
    * Hide tools by pattern or names.
    *
    * @param pattern - Pattern to match (e.g., "chrome_*")

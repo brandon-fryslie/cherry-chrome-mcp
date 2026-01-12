@@ -72,6 +72,8 @@ export interface Connection {
   consoleLogs: ConsoleMessage[];
   /** Whether console capture is enabled */
   consoleEnabled: boolean;
+  /** Previous step variables for change tracking (P2) */
+  previousStepVars?: Record<string, string>;
 }
 
 /**
