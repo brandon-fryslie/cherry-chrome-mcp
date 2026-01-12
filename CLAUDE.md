@@ -12,6 +12,7 @@ Cherry Chrome MCP is a TypeScript MCP server for Chrome automation with CSS sele
 - Multi-instance Chrome connection support
 - Full JavaScript debugger via CDP (breakpoints, stepping, evaluation)
 - Smart result size analysis (rejects oversized results with suggestions)
+- **Feature toggle:** Legacy vs Smart consolidated tools (see `FEATURE-TOGGLE.md`)
 
 ## Common Commands
 
@@ -21,11 +22,16 @@ npm run dev          # Watch mode
 npm test             # Build and run tests
 npm start            # Build and start server
 npm run clean        # Remove build directory
+./test-toggle.sh     # Test feature toggle (legacy vs smart modes)
 ```
 
 ### Testing with MCP Inspector
 ```bash
+# Legacy mode (default)
 npx @modelcontextprotocol/inspector node build/src/index.js
+
+# Smart mode
+USE_SMART_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
 ```
 
 ### Testing with Claude Code
@@ -33,22 +39,31 @@ npx @modelcontextprotocol/inspector node build/src/index.js
 claude mcp add --scope project cherry-chrome -- node /absolute/path/to/build/src/index.js
 ```
 
+## Feature Toggle: Legacy vs Smart Tools
+
+The server supports two tool modes via `USE_SMART_TOOLS` environment variable:
+
+- **Legacy Mode (default):** 23 granular tools (`chrome_connect`, `debugger_enable`, etc.)
+- **Smart Mode:** 18 consolidated action-based tools (`chrome`, `step`, `execution`, etc.)
+
+See `FEATURE-TOGGLE.md` for full details, usage examples, and tool comparison table.
+
 ## Architecture
 
 ### File Structure
 
 ```
 src/
-├── index.ts          # MCP server entry point, tool registration
+├── index.ts          # MCP server entry point, tool registration (with feature toggle)
 ├── browser.ts        # BrowserManager - multi-instance connection management
-├── config.ts         # Configuration constants
+├── config.ts         # Configuration constants (including USE_SMART_TOOLS flag)
 ├── response.ts       # Response formatting, size checking utilities
 ├── types.ts          # TypeScript type definitions
 └── tools/
-    ├── index.ts      # Tool exports
-    ├── chrome.ts     # Connection tools (5): connect, launch, list, switch, disconnect
+    ├── index.ts      # Tool exports (legacy + consolidated)
+    ├── chrome.ts     # Connection tools: legacy (5) + smart (3 consolidated)
     ├── dom.ts        # DOM tools (5): query_elements, click, fill, navigate, console
-    └── debugger.ts   # Debugger tools (11): enable, breakpoints, stepping, evaluation
+    └── debugger.ts   # Debugger tools: legacy (11) + smart (7 consolidated)
 ```
 
 ### Key Components
@@ -58,6 +73,7 @@ src/
 - Each `connection_id` maps to a Browser + Page + CDPSession
 - Tracks active connection for default tool operations
 - Handles CDP event listeners for `Debugger.paused` / `Debugger.resumed`
+- Supports tool visibility management (`hideTools`, `showTools`, `isToolHidden`)
 
 **Response Utilities (`src/response.ts`)**
 - `checkResultSize()` - Rejects oversized results with smart suggestions
@@ -68,14 +84,20 @@ src/
 - `MAX_RESULT_SIZE = 5000` - Result size limit (~1250 tokens)
 - `MAX_DOM_DEPTH = 3` - Default DOM depth filter
 - `HARD_MAX_DOM_DEPTH = 10` - Maximum allowed depth
+- `USE_SMART_TOOLS` - Feature toggle (default: `false` for backward compatibility)
 
 ### Tool Categories
 
-**Chrome Connection (5 tools):** `chrome_connect`, `chrome_launch`, `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`
+**Legacy Mode (23 tools):**
+- Chrome Connection (7): `chrome_connect`, `chrome_launch`, `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `list_targets`, `switch_target`
+- DOM Interaction (5): `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`
+- Debugger (11): `debugger_enable`, `debugger_set_breakpoint`, `debugger_get_call_stack`, `debugger_evaluate_on_call_frame`, `debugger_step_over`, `debugger_step_into`, `debugger_step_out`, `debugger_resume`, `debugger_pause`, `debugger_remove_breakpoint`, `debugger_set_pause_on_exceptions`
 
-**DOM Interaction (5 tools):** `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`
-
-**Debugger (11 tools):** `debugger_enable`, `debugger_set_breakpoint`, `debugger_get_call_stack`, `debugger_evaluate_on_call_frame`, `debugger_step_over`, `debugger_step_into`, `debugger_step_out`, `debugger_resume`, `debugger_pause`, `debugger_remove_breakpoint`, `debugger_set_pause_on_exceptions`
+**Smart Mode (18 tools):**
+- Chrome Connection (5): `chrome` (consolidated), `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `target` (consolidated)
+- DOM Interaction (5): Same as legacy mode
+- Debugger (6): `enable_debug_tools`, `breakpoint` (consolidated), `step` (consolidated), `execution` (consolidated), `call_stack`, `evaluate`, `pause_on_exceptions`
+- Tool Management (2): `hide_tools`, `show_tools` (NEW)
 
 ## Implementation Patterns
 
@@ -144,6 +166,28 @@ function checkResultSize(result: string, maxSize = 5000, context?: string) {
 }
 ```
 
+### Feature Toggle Implementation
+
+Tool registration and routing is conditional based on `USE_SMART_TOOLS`:
+
+```typescript
+// src/index.ts
+import { USE_SMART_TOOLS } from './config.js';
+
+const legacyTools: Tool[] = [ /* 23 legacy tool definitions */ ];
+const smartTools: Tool[] = [ /* 18 smart tool definitions */ ];
+
+const activeTools = USE_SMART_TOOLS ? smartTools : legacyTools;
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (USE_SMART_TOOLS) {
+    // Route to consolidated tools
+  } else {
+    // Route to legacy tools
+  }
+});
+```
+
 ## Reference Implementations
 
 ### `references/reference-chrome-devtools-mcp/`
@@ -175,6 +219,8 @@ describe('Cherry Chrome MCP Server', () => {
 
 Run with: `npm test`
 
+Test feature toggle with: `./test-toggle.sh`
+
 ## Development Tips
 
 - All DOM operations use `page.evaluate()` with JavaScript
@@ -182,3 +228,5 @@ Run with: `npm test`
 - Line numbers: user-facing is 1-indexed, CDP is 0-indexed
 - Connection ID `"default"` is used for single-connection workflows
 - Error messages should include context and potential fixes
+- Feature toggle requires server restart (not runtime-switchable)
+- Both modes share the same underlying `BrowserManager` and tool implementations
