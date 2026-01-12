@@ -16,6 +16,7 @@ import {
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 import { USE_SMART_TOOLS } from './config.js';
+import { browserManager } from './browser.js';
 
 // Import all tools (legacy and new consolidated)
 import {
@@ -1016,11 +1017,75 @@ const smartTools: Tool[] = [
 // Select tool set based on feature flag
 const activeTools = USE_SMART_TOOLS ? smartTools : legacyTools;
 
+/**
+ * Get visible tools based on current connection state (P1: Dynamic Visibility)
+ *
+ * This function implements state-based tool filtering:
+ * - Not connected: Only chrome and chrome_list_connections
+ * - Connected: Add DOM tools, target, enable_debug_tools, hide/show_tools
+ * - Debug enabled: Add breakpoint, execution, pause_on_exceptions
+ * - Paused: Only step, execution, evaluate, call_stack, show_tools
+ */
+function getVisibleSmartTools(): Tool[] {
+  if (!USE_SMART_TOOLS) {
+    return activeTools;
+  }
+
+  const hasConnection = browserManager.hasConnections();
+  const debugEnabled = browserManager.isDebuggerEnabled();
+  const isPaused = browserManager.isPaused();
+
+  // Filter tools based on state
+  const visibleTools = activeTools.filter(tool => {
+    const toolName = tool.name;
+
+    // Check if manually hidden
+    if (browserManager.isToolHidden(toolName)) {
+      return false;
+    }
+
+    // State-based visibility rules
+    if (!hasConnection) {
+      // Not connected: Only connection tools
+      return ['chrome', 'chrome_list_connections'].includes(toolName);
+    }
+
+    if (isPaused) {
+      // Paused: Only stepping and inspection tools
+      return ['step', 'execution', 'evaluate', 'call_stack', 'show_tools'].includes(toolName);
+    }
+
+    if (debugEnabled) {
+      // Debug enabled: All tools except those requiring pause
+      const pauseOnlyTools = ['step', 'evaluate', 'call_stack'];
+      return !pauseOnlyTools.includes(toolName);
+    }
+
+    // Connected but no debugger: DOM and connection tools only
+    const debugOnlyTools = [
+      'enable_debug_tools',
+      'breakpoint',
+      'step',
+      'execution',
+      'evaluate',
+      'call_stack',
+      'pause_on_exceptions'
+    ];
+    return !debugOnlyTools.includes(toolName);
+  });
+
+  return visibleTools;
+}
+
 // Handle tool list requests
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: activeTools,
-  };
+  if (!USE_SMART_TOOLS) {
+    return { tools: activeTools };
+  }
+
+  // P1: Use state-based filtering for smart tools
+  const visibleTools = getVisibleSmartTools();
+  return { tools: visibleTools };
 });
 
 // Handle tool execution
@@ -1214,6 +1279,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // P1: Register callback for tool list changes (dynamic visibility)
+  if (USE_SMART_TOOLS) {
+    browserManager.setToolListChangedCallback(() => {
+      server.sendToolListChanged().catch(err =>
+        console.error('Failed to notify tool list change:', err)
+      );
+    });
+  }
 
   const mode = USE_SMART_TOOLS ? 'SMART TOOLS' : 'LEGACY TOOLS';
   console.error(`Cherry Chrome MCP Server running on stdio [MODE: ${mode}]`);
