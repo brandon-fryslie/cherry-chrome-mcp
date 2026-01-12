@@ -256,6 +256,11 @@ const legacyTools: Tool[] = [
           description: 'Which matching element to click (0 = first)',
           default: 0,
         },
+        include_context: {
+          type: 'boolean',
+          description: 'Include element state after click (default: true)',
+          default: true,
+        },
         connection_id: {
           type: 'string',
           description: 'Chrome connection to use',
@@ -289,6 +294,11 @@ const legacyTools: Tool[] = [
           description: 'Press Enter after filling',
           default: false,
         },
+        include_context: {
+          type: 'boolean',
+          description: 'Include element state after fill (default: true)',
+          default: true,
+        },
         connection_id: {
           type: 'string',
           description: 'Chrome connection to use',
@@ -306,6 +316,11 @@ const legacyTools: Tool[] = [
         url: {
           type: 'string',
           description: 'URL to navigate to',
+        },
+        include_context: {
+          type: 'boolean',
+          description: 'Include page title and element summary (default: true)',
+          default: true,
         },
         connection_id: {
           type: 'string',
@@ -698,6 +713,11 @@ const smartTools: Tool[] = [
           description: 'Which matching element to click (0 = first)',
           default: 0,
         },
+        include_context: {
+          type: 'boolean',
+          description: 'Include element state after click (default: true)',
+          default: true,
+        },
         connection_id: {
           type: 'string',
           description: 'Chrome connection to use',
@@ -731,6 +751,11 @@ const smartTools: Tool[] = [
           description: 'Press Enter after filling',
           default: false,
         },
+        include_context: {
+          type: 'boolean',
+          description: 'Include element state after fill (default: true)',
+          default: true,
+        },
         connection_id: {
           type: 'string',
           description: 'Chrome connection to use',
@@ -748,6 +773,11 @@ const smartTools: Tool[] = [
         url: {
           type: 'string',
           description: 'URL to navigate to',
+        },
+        include_context: {
+          type: 'boolean',
+          description: 'Include page title and element summary (default: true)',
+          default: true,
         },
         connection_id: {
           type: 'string',
@@ -849,6 +879,11 @@ const smartTools: Tool[] = [
           description: '"over" (next line), "into" (enter function), or "out" (exit function)',
           enum: ['over', 'into', 'out'],
         },
+        include_context: {
+          type: 'boolean',
+          description: 'Include new location and local variables with change markers (default: true)',
+          default: true,
+        },
         connection_id: {
           type: 'string',
           description: 'Chrome connection to use',
@@ -868,6 +903,11 @@ const smartTools: Tool[] = [
           type: 'string',
           description: '"resume" to continue execution or "pause" to break',
           enum: ['resume', 'pause'],
+        },
+        include_context: {
+          type: 'boolean',
+          description: 'Include call stack and local variables when paused (default: true)',
+          default: true,
         },
         connection_id: {
           type: 'string',

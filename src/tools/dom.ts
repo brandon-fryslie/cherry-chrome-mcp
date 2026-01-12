@@ -12,6 +12,7 @@ import {
   escapeForJs,
 } from '../response.js';
 import type { QueryElementsResult, DomActionResult } from '../types.js';
+import { gatherNavigateContext, gatherActionContext } from './context.js';
 
 /**
  * Get page for a connection, with error handling.
@@ -226,14 +227,17 @@ export async function queryElements(args: {
  * Click an element matching the CSS selector.
  *
  * Use query_elements first to verify the element exists and get the correct index.
+ * Auto-includes element state after action when include_context is true (default).
  */
 export async function clickElement(args: {
   selector: string;
   index?: number;
+  include_context?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const selector = args.selector;
   const index = args.index ?? 0;
+  const includeContext = args.include_context ?? true;
 
   try {
     const page = getPage(args.connection_id);
@@ -264,7 +268,17 @@ export async function clickElement(args: {
     const result = (await page.evaluate(script)) as DomActionResult;
 
     if (result.success) {
-      return successResponse(`Clicked ${result.clicked}: ${result.text || ''}`);
+      let response = `Clicked ${result.clicked}: ${result.text || ''}`;
+
+      // Add context if requested
+      if (includeContext) {
+        const context = await gatherActionContext(page, selector, 'click');
+        if (context) {
+          response += '\n' + context;
+        }
+      }
+
+      return successResponse(response);
     } else {
       return errorResponse(`Failed: ${result.error}`);
     }
@@ -277,18 +291,21 @@ export async function clickElement(args: {
  * Fill text into an input element matching the CSS selector.
  *
  * Use query_elements first to verify the input exists and get the correct index.
+ * Auto-includes element state after action when include_context is true (default).
  */
 export async function fillElement(args: {
   selector: string;
   text: string;
   index?: number;
   submit?: boolean;
+  include_context?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const selector = args.selector;
   const text = args.text;
   const index = args.index ?? 0;
   const submit = args.submit ?? false;
+  const includeContext = args.include_context ?? true;
 
   try {
     const page = getPage(args.connection_id);
@@ -332,9 +349,17 @@ export async function fillElement(args: {
 
     if (result.success) {
       const submitMsg = submit ? ' and submitted' : '';
-      return successResponse(
-        `Filled ${result.filled} (${result.type})${submitMsg}`
-      );
+      let response = `Filled ${result.filled} (${result.type})${submitMsg}`;
+
+      // Add context if requested
+      if (includeContext) {
+        const context = await gatherActionContext(page, selector, 'fill');
+        if (context) {
+          response += '\n' + context;
+        }
+      }
+
+      return successResponse(response);
     } else {
       return errorResponse(`Failed: ${result.error}`);
     }
@@ -345,15 +370,30 @@ export async function fillElement(args: {
 
 /**
  * Navigate to a URL.
+ * Auto-includes page title and element summary when include_context is true (default).
  */
 export async function navigate(args: {
   url: string;
+  include_context?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const includeContext = args.include_context ?? true;
+
   try {
     const page = getPage(args.connection_id);
     await page.goto(args.url, { waitUntil: 'networkidle2' });
-    return successResponse(`Navigated to ${args.url}`);
+
+    let response = `Navigated to ${args.url}`;
+
+    // Add context if requested
+    if (includeContext) {
+      const context = await gatherNavigateContext(page);
+      if (context) {
+        response += '\n' + context;
+      }
+    }
+
+    return successResponse(response);
   } catch (error) {
     return errorResponse(`Error navigating: ${error}`);
   }
