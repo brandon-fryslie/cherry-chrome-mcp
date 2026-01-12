@@ -1,0 +1,65 @@
+# Cherry Chrome MCP Roadmap
+
+Last updated: 2025-01-12
+
+## Phase 1: Usability Improvements [ACTIVE]
+
+Goal: Make debugging web apps easier and more reliable for AI agents
+
+### Topics
+
+#### target-management [PROPOSED]
+
+**Description**: Tools to discover and switch between browser targets (pages, workers, service workers) within a connection.
+
+**Tools to implement**:
+- `list_targets` - Show all pages/workers/service workers for a connection with:
+  - Index number for easy selection
+  - Target type (page, worker, service_worker, iframe)
+  - Title and URL
+  - Active indicator showing which target is currently selected
+
+- `switch_target` - Change active page within connection by:
+  - Index number (e.g., `switch_target(0)`)
+  - Title pattern (e.g., `switch_target("GitKraken Desktop")`)
+  - URL pattern (e.g., `switch_target("*index.html*")`)
+
+**Pain point**: Currently Puppeteer grabs the first available page, which may not be the main UI. Required shell-out to `curl + python` to even see what targets exist.
+
+**Directory**: `.agent_planning/target-management/`
+
+---
+
+#### connection-diagnostics [PROPOSED]
+
+**Description**: Better visibility into connection state and failure modes.
+
+**Improvements**:
+- Detect and warn about port conflicts (multiple processes listening on same port)
+- Surface clearer error messages when connections hang or fail
+- Show connection health/state in `chrome_list_connections` output
+- Add timeout visibility (show how long operations are taking)
+
+**Pain point**: Connection hung for minutes with no feedback. Had to use `lsof` to discover two processes were fighting over the same port.
+
+**Directory**: `.agent_planning/connection-diagnostics/`
+
+---
+
+## Phase 2: Advanced Debugging [QUEUED]
+
+Goal: Deep debugging capabilities for complex web apps
+
+### Topics
+
+(No topics yet)
+
+---
+
+## Phase 3: Developer Experience [QUEUED]
+
+Goal: Polish and convenience features
+
+### Topics
+
+(No topics yet)

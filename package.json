@@ -1,0 +1,37 @@
+{
+  "name": "cherry-chrome-mcp",
+  "version": "0.1.0",
+  "description": "CSS selector-based Chrome DevTools MCP server with debugger support",
+  "type": "module",
+  "bin": "./build/src/index.js",
+  "main": "./build/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "npm run build && node build/src/index.js",
+    "test": "npm run build && node --test build/tests/*.test.js",
+    "test:watch": "node --test --watch build/tests/*.test.js",
+    "clean": "rm -rf build"
+  },
+  "keywords": [
+    "mcp",
+    "chrome",
+    "devtools",
+    "debugger",
+    "puppeteer",
+    "css-selectors"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "puppeteer": "^24.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
