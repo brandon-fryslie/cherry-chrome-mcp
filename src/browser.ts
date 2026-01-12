@@ -362,6 +362,63 @@ export class BrowserManager {
   }
 
   /**
+   * Get active connection ID.
+   *
+   * @returns Active connection ID or null if none
+   */
+  getActiveId(): string | null {
+    return this.activeConnectionId;
+  }
+
+  /**
+   * Switch to a different page within a connection.
+   *
+   * @param connectionId - Optional connection ID
+   * @param page - New page to switch to
+   */
+  async switchPage(connectionId: string | undefined, page: Page): Promise<void> {
+    const connection = this.getConnection(connectionId);
+    if (!connection) {
+      throw new Error('No connection found');
+    }
+
+    // Update the page reference
+    connection.page = page;
+
+    // Re-setup console capture on new page
+    connection.consoleLogs = [];
+    page.on('console', (msg) => {
+      connection.consoleLogs.push({
+        level: msg.type(),
+        text: msg.text(),
+        timestamp: Date.now(),
+      });
+    });
+
+    // If debugger was enabled, need to recreate CDP session for new page
+    if (connection.debuggerEnabled) {
+      const newClient = await page.createCDPSession();
+      connection.cdpSession = newClient;
+
+      // Re-setup event handlers
+      newClient.on('Debugger.paused', (params) => {
+        connection.pausedData = params as unknown as DebuggerPausedEvent;
+        debug(`Debugger paused: ${params.reason}`);
+        this.notifyToolListChanged();
+      });
+
+      newClient.on('Debugger.resumed', () => {
+        connection.pausedData = null;
+        debug('Debugger resumed');
+        this.notifyToolListChanged();
+      });
+
+      // Re-enable debugger
+      await newClient.send('Debugger.enable');
+    }
+  }
+
+  /**
    * Enable debugger for a connection and set up CDP session.
    *
    * @param connectionId - Optional connection ID

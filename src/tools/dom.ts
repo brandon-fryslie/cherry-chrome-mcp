@@ -384,17 +384,20 @@ export async function getConsoleLogs(args: {
     }
 
     // Get logs from browser manager
-    const logs = browserManager.getConsoleLogs(args.connection_id, filterLevel);
+    const logs = browserManager.getConsoleLogs(args.connection_id);
 
-    if (logs.length === 0) {
+    // Filter logs by level if specified
+    const filteredLogs = filterLevel === 'all' ? logs : logs.filter(log => log.level === filterLevel);
+
+    if (filteredLogs.length === 0) {
       return successResponse(
         `No console messages captured${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}.`
       );
     }
 
     // Get most recent logs up to limit
-    const recentLogs = logs.slice(-limit);
-    const totalCount = logs.length;
+    const recentLogs = filteredLogs.slice(-limit);
+    const totalCount = filteredLogs.length;
 
     const output: string[] = [];
     output.push(

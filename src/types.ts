@@ -46,7 +46,7 @@ export interface Scope {
 export interface BreakpointInfo {
   url: string;
   lineNumber: number;
-  columnNumber: number;
+  columnNumber?: number;
   condition?: string;
 }
 

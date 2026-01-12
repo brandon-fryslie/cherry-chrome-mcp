@@ -54,12 +54,13 @@ export async function chromeLaunch(args: {
   const connectionId = args.connection_id ?? 'auto';
 
   try {
+    // Fix: browserManager.launch signature is (debugPort, connectionId?, headless?, userDataDir?, extraArgs?)
     const result = await browserManager.launch(
       debugPort,
+      connectionId,
       headless,
       userDataDir,
-      extraArgs,
-      connectionId
+      extraArgs
     );
     return successResponse(result);
   } catch (error) {
@@ -108,7 +109,8 @@ export async function chrome(args: {
 export async function chromeListConnections(): Promise<{
   content: Array<{ type: 'text'; text: string }>;
 }> {
-  const connections = browserManager.listConnections();
+  // Fix: use getConnectionsStatus() instead of listConnections()
+  const connections = await browserManager.getConnectionsStatus();
 
   if (connections.size === 0) {
     return successResponse(
@@ -222,6 +224,7 @@ export async function listTargets(args: {
     const currentUrl = connection.page.url();
 
     const lines: string[] = [];
+    // Fix: use getActiveId() instead of accessing private property
     const connId = args.connection_id || browserManager.getActiveId() || 'unknown';
     lines.push(`Targets for connection '${connId}':`);
     lines.push('');
@@ -330,7 +333,7 @@ export async function switchTarget(args: {
       );
     }
 
-    // Update connection's page reference
+    // Update connection's page reference using switchPage method
     await browserManager.switchPage(args.connection_id, newPage);
 
     return successResponse(
