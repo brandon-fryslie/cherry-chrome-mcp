@@ -396,7 +396,7 @@ export async function breakpoint(args: {
  * Auto-includes new location, local variables with [CHANGED] markers, and new console logs.
  */
 export async function step(args: {
-  action: 'over' | 'into' | 'out';
+  direction: 'over' | 'into' | 'out';
   include_context?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
@@ -422,9 +422,9 @@ export async function step(args: {
       out: 'Debugger.stepOut',
     };
 
-    const method = stepMethod[args.action];
+    const method = stepMethod[args.direction];
     if (!method) {
-      return errorResponse(`Invalid action: ${args.action}. Must be 'over', 'into', or 'out'.`);
+      return errorResponse(`Invalid direction: ${args.direction}. Must be 'over', 'into', or 'out'.`);
     }
 
     await cdpSession.send(method as any);
@@ -432,7 +432,7 @@ export async function step(args: {
     // Wait a bit for debugger to pause at new location
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    let response = `Stepped ${args.action} successfully.`;
+    let response = `Stepped ${args.direction} successfully.`;
 
     // Add context if requested
     if (includeContext && browserManager.isPaused(args.connection_id)) {
@@ -446,7 +446,7 @@ export async function step(args: {
 
     return successResponse(response);
   } catch (error) {
-    return errorResponse(`Error stepping ${args.action}: ${error}`);
+    return errorResponse(`Error stepping ${args.direction}: ${error}`);
   }
 }
 
