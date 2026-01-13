@@ -1,0 +1,58 @@
+/**
+ * Configuration constants for Cherry Chrome MCP
+ * Ported from Python config.py
+ */
+/**
+ * Maximum result size in characters.
+ * Results larger than this will be REJECTED with a helpful error message
+ * (not truncated - that would waste tokens on incomplete data).
+ * 5000 chars approximately equals 1250 tokens.
+ */
+export declare const MAX_RESULT_SIZE = 5000;
+/**
+ * Maximum DOM depth for query_elements.
+ * Elements nested deeper than this are filtered out to prevent returning
+ * the entire page when querying broad selectors like "div".
+ * Depth is measured from document.body.
+ * Setting this low (3) forces agents to use specific selectors.
+ * Agents can override with max_depth parameter up to HARD_MAX_DOM_DEPTH.
+ */
+export declare const MAX_DOM_DEPTH = 3;
+/**
+ * Hard limit for DOM depth.
+ * Even if agent requests higher depth, this is the absolute maximum.
+ * Prevents returning massive amounts of irrelevant data.
+ */
+export declare const HARD_MAX_DOM_DEPTH = 10;
+/**
+ * Enable debug logging to stderr.
+ */
+export declare const DEBUG: boolean;
+/**
+ * CDP command timeout in milliseconds.
+ */
+export declare const CDP_TIMEOUT = 10000;
+/**
+ * Wait time after launching Chrome before connecting (ms).
+ */
+export declare const CHROME_LAUNCH_WAIT = 2000;
+/**
+ * Feature toggle: Use smart consolidated tools instead of legacy tools.
+ *
+ * When false (default): Uses original granular tools for backward compatibility
+ *   - chrome_connect, chrome_launch, chrome_disconnect, etc.
+ *   - debugger_enable, debugger_step_over, debugger_step_into, etc.
+ *
+ * When true: Uses new consolidated smart tools
+ *   - chrome (replaces chrome_connect, chrome_launch)
+ *   - target (replaces list_targets, switch_target)
+ *   - step (replaces debugger_step_over, debugger_step_into, debugger_step_out)
+ *   - execution (replaces debugger_resume, debugger_pause)
+ *   - breakpoint (replaces debugger_set_breakpoint, debugger_remove_breakpoint)
+ *   - enableDebugTools (replaces debugger_enable with semantic intent)
+ *   - hideTools, showTools (new tool visibility management)
+ *
+ * Set via environment variable: USE_SMART_TOOLS=true
+ */
+export declare const USE_SMART_TOOLS: boolean;
+//# sourceMappingURL=config.d.ts.map
