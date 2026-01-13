@@ -22,6 +22,18 @@ npm run build
 
 ## Usage
 
+### Quick Start with npx
+
+Run directly from GitHub without cloning:
+
+```bash
+# Legacy mode (23 granular tools)
+npx github:brandon-fryslie/cherry-chrome-mcp
+
+# Smart mode (19 consolidated tools with dynamic visibility)
+USE_SMART_TOOLS=true npx github:brandon-fryslie/cherry-chrome-mcp
+```
+
 ### As MCP Server
 
 Add to your MCP client configuration:
@@ -30,8 +42,8 @@ Add to your MCP client configuration:
 {
   "mcpServers": {
     "cherry-chrome": {
-      "command": "node",
-      "args": ["/path/to/cherry-chrome-mcp/build/src/index.js"],
+      "command": "npx",
+      "args": ["github:brandon-fryslie/cherry-chrome-mcp"],
       "env": {
         "USE_SMART_TOOLS": "true"
       }
