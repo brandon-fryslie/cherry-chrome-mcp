@@ -46,6 +46,27 @@ Goal: Make debugging web apps easier and more reliable for AI agents
 
 ---
 
+#### console-log-improvements [PROPOSED]
+
+**Description**: Better console log visibility and filtering for efficient triage.
+
+**Tools to implement**:
+- `console_stats` - Show log counts by level without fetching messages:
+  - Total message count
+  - Count by level (errors, warnings, info, log, debug)
+  - Quick overview without pulling full message payload
+
+- Add `pattern` parameter to `get_console_logs` - Filter by text/regex:
+  - `get_console_logs(pattern="CommitStore", limit=10)`
+  - `get_console_logs(pattern="error|failed", limit=20)`
+  - Supports both substring and regex patterns
+
+**Pain point**: With 1000+ messages, had to pull all logs to see counts or find specific entries. No way to quickly check "are there errors?" or search without manual scanning.
+
+**Directory**: `.agent_planning/console-log-improvements/`
+
+---
+
 ## Phase 2: Advanced Debugging [QUEUED]
 
 Goal: Deep debugging capabilities for complex web apps
