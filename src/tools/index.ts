@@ -18,8 +18,6 @@ export {
   chrome,
   target,
   enableDebugTools,
-  hideTools,
-  showTools,
 } from './chrome.js';
 
 // DOM interaction tools
