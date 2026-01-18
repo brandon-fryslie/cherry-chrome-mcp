@@ -1,0 +1,109 @@
+Agent: iterative-implementer | 2026-01-18
+Mode: manual
+Completed: P0 Refactoring Complete | Files: 5 | Commits: 2
+Status: in_progress (P1 documentation remains)
+
+## P0 Completed (All Code Changes)
+
+### Environment Variable Rename
+- ✓ Renamed USE_SMART_TOOLS → USE_LEGACY_TOOLS in src/config.ts
+- ✓ Default is false (smart tools enabled by default)
+- ✓ Logic inverted throughout src/index.ts
+- ✓ Startup message updated
+
+### Dynamic Visibility Removal
+- ✓ Removed getVisibleSmartTools() function (50 lines)
+- ✓ Simplified ListToolsRequestSchema handler
+- ✓ All tools now statically registered
+
+### BrowserManager Cleanup
+- ✓ Removed hiddenTools Set property
+- ✓ Removed toolListChangedCallback property
+- ✓ Removed setToolListChangedCallback() method
+- ✓ Removed notifyToolListChanged() method
+- ✓ Removed hideTools() method
+- ✓ Removed showTools() method
+- ✓ Removed isToolHidden() method
+- ✓ Removed callback registration from main()
+- ✓ Removed all notifyToolListChanged() calls
+
+### hide_tools / show_tools Removal
+- ✓ Removed tool definitions from smartTools array
+- ✓ Removed hideTools() implementation from chrome.ts
+- ✓ Removed showTools() implementation from chrome.ts
+- ✓ Removed exports from tools/index.ts
+- ✓ Removed imports from src/index.ts
+- ✓ Removed case handlers from smart tools routing
+
+## Validation
+
+### Build
+- ✓ npm run build completes with no errors
+- ✓ TypeScript compilation successful
+
+### Server Startup
+- ✓ Smart mode (default) starts successfully
+  - Displays: "Cherry Chrome MCP Server running on stdio [MODE: SMART TOOLS]"
+  - Message: "Set USE_LEGACY_TOOLS=true to use original granular tools"
+
+- ✓ Legacy mode starts successfully
+  - USE_LEGACY_TOOLS=true flag works correctly
+  - Displays: "Cherry Chrome MCP Server running on stdio [MODE: LEGACY TOOLS]"
+
+### Code Quality
+- ✓ No compilation errors
+- ✓ No unused imports
+- ✓ All removed code verified gone via grep
+
+## Tool Counts
+
+- Legacy Mode: 23 tools (unchanged)
+- Smart Mode: 17 tools (was 18, removed hide_tools and show_tools)
+  Note: Expected 16 per plan, but enable_debug_tools accounts for the difference
+
+## Files Modified
+
+1. src/config.ts - Renamed variable, updated comments
+2. src/index.ts - Major refactoring (removed ~150 lines)
+3. src/browser.ts - Removed callback infrastructure (~130 lines)
+4. src/tools/chrome.ts - Removed hide/show implementations (~40 lines)
+5. src/tools/index.ts - Removed exports
+
+## Commits
+
+1. b6598dc - refactor(P0): rename USE_SMART_TOOLS to USE_LEGACY_TOOLS and remove dynamic visibility
+2. a959e23 - refactor(P0): remove hide_tools and show_tools implementations
+
+## Remaining Work (P1 - Documentation)
+
+Documentation files that need updates:
+- FEATURE-TOGGLE.md - Update variable name, remove hide/show_tools references
+- CLAUDE.md - Update variable name, testing commands
+- README.md - Update variable references if applicable
+- test-toggle.sh - Update variable name (if exists)
+
+All updates should:
+- Change USE_SMART_TOOLS → USE_LEGACY_TOOLS
+- Update default mode description
+- Remove hide_tools/show_tools from tool lists
+- Update tool counts (smart: 17, legacy: 23)
+
+## Breaking Changes
+
+BREAKING CHANGE: Environment variable renamed
+- Old: USE_SMART_TOOLS=true for smart tools
+- New: USE_LEGACY_TOOLS=true for legacy tools (inverted)
+- Migration: Remove USE_SMART_TOOLS=true (smart is now default), or set USE_LEGACY_TOOLS=true for legacy mode
+
+## Ready for Evaluation
+
+Code implementation: YES
+- All P0 criteria met
+- Server builds and starts in both modes
+- All dynamic filtering code removed
+- ~320 lines of code deleted
+- Architecture significantly simplified
+
+Documentation: NO
+- P1 documentation updates remain
+- Recommend user review and update docs based on preferences
