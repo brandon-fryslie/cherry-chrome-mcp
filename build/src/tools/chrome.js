@@ -291,35 +291,4 @@ You can now:
         return errorResponse(`Error enabling debug tools: ${error}`);
     }
 }
-/**
- * META TOOL: Hide tools by pattern
- *
- * Hides tools matching the specified name or pattern.
- * Hidden tools won't appear in tool lists until restored with show_tools.
- */
-export async function hideTools(args) {
-    try {
-        const hiddenCount = browserManager.hideTools(args.pattern, args.tools);
-        return successResponse(`Hidden ${hiddenCount} tool(s).
-
-Use show_tools(all=true) to restore all hidden tools.`);
-    }
-    catch (error) {
-        return errorResponse(`Error hiding tools: ${error}`);
-    }
-}
-/**
- * META TOOL: Show hidden tools
- *
- * Restores hidden tools either all at once or by specific list.
- */
-export async function showTools(args) {
-    try {
-        const restoredCount = browserManager.showTools(args.all, args.tools);
-        return successResponse(`Restored ${restoredCount} tool(s).`);
-    }
-    catch (error) {
-        return errorResponse(`Error showing tools: ${error}`);
-    }
-}
 //# sourceMappingURL=chrome.js.map

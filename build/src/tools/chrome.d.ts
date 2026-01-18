@@ -161,35 +161,4 @@ export declare function enableDebugTools(args: {
     }>;
     isError?: boolean;
 }>;
-/**
- * META TOOL: Hide tools by pattern
- *
- * Hides tools matching the specified name or pattern.
- * Hidden tools won't appear in tool lists until restored with show_tools.
- */
-export declare function hideTools(args: {
-    pattern?: string;
-    tools?: string[];
-}): Promise<{
-    content: Array<{
-        type: 'text';
-        text: string;
-    }>;
-    isError?: boolean;
-}>;
-/**
- * META TOOL: Show hidden tools
- *
- * Restores hidden tools either all at once or by specific list.
- */
-export declare function showTools(args: {
-    all?: boolean;
-    tools?: string[];
-}): Promise<{
-    content: Array<{
-        type: 'text';
-        text: string;
-    }>;
-    isError?: boolean;
-}>;
 //# sourceMappingURL=chrome.d.ts.map

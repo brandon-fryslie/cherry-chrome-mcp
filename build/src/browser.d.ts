@@ -14,17 +14,6 @@ import type { Connection, ConnectionStatus, DebuggerPausedEvent, BreakpointInfo,
 export declare class BrowserManager {
     private connections;
     private activeConnectionId;
-    private hiddenTools;
-    private toolListChangedCallback;
-    /**
-     * Set callback for tool list changes (used for P1: Dynamic Tool Visibility).
-     * This callback is invoked when connection state changes that affect tool visibility.
-     */
-    setToolListChangedCallback(callback: () => void): void;
-    /**
-     * Notify that tool list has changed (P1: Dynamic Tool Visibility)
-     */
-    private notifyToolListChanged;
     /**
      * Connect to an existing Chrome instance running with remote debugging.
      *
@@ -173,29 +162,6 @@ export declare class BrowserManager {
      * @param vars - Variable name to value mapping
      */
     setPreviousStepVars(connectionId: string | undefined, vars: Record<string, string>): void;
-    /**
-     * Hide tools by pattern or names.
-     *
-     * @param pattern - Pattern to match (e.g., "chrome_*")
-     * @param toolNames - Specific tool names to hide
-     * @returns Number of tools hidden
-     */
-    hideTools(pattern?: string, toolNames?: string[]): number;
-    /**
-     * Show (restore) hidden tools.
-     *
-     * @param all - Restore all hidden tools
-     * @param toolNames - Specific tool names to restore
-     * @returns Number of tools restored
-     */
-    showTools(all?: boolean, toolNames?: string[]): number;
-    /**
-     * Check if a tool should be hidden based on hidden patterns.
-     *
-     * @param toolName - Tool name to check
-     * @returns True if tool should be hidden
-     */
-    isToolHidden(toolName: string): boolean;
     /**
      * Check if debugger is enabled for active connection.
      */

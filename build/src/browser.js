@@ -53,23 +53,6 @@ function sleep(ms) {
 export class BrowserManager {
     connections = new Map();
     activeConnectionId = null;
-    hiddenTools = new Set();
-    toolListChangedCallback = null;
-    /**
-     * Set callback for tool list changes (used for P1: Dynamic Tool Visibility).
-     * This callback is invoked when connection state changes that affect tool visibility.
-     */
-    setToolListChangedCallback(callback) {
-        this.toolListChangedCallback = callback;
-    }
-    /**
-     * Notify that tool list has changed (P1: Dynamic Tool Visibility)
-     */
-    notifyToolListChanged() {
-        if (this.toolListChangedCallback) {
-            this.toolListChangedCallback();
-        }
-    }
     /**
      * Connect to an existing Chrome instance running with remote debugging.
      *
@@ -134,8 +117,6 @@ export class BrowserManager {
             if (!this.activeConnectionId) {
                 this.activeConnectionId = connectionId;
             }
-            // Notify tool list changed (P1: state transition to "connected")
-            this.notifyToolListChanged();
             return `Connected to Chrome at ${host}:${port} (ID: ${connectionId})\nURL: ${page.url()}`;
         }
         catch (error) {
@@ -191,9 +172,6 @@ export class BrowserManager {
             if (result.startsWith('Error:')) {
                 return result;
             }
-            // Notify tool list changed (P1: state transition to "connected")
-            // (already called by connect(), but defensive)
-            this.notifyToolListChanged();
             return `Launched Chrome on port ${debugPort} (ID: ${connId})\n${result}`;
         }
         catch (error) {
@@ -234,8 +212,6 @@ export class BrowserManager {
                     info(`Switched active connection to: ${this.activeConnectionId}`);
                 }
             }
-            // Notify tool list changed (P1: state transition - may go to "not connected")
-            this.notifyToolListChanged();
             return `Disconnected from Chrome (ID: ${connectionId})`;
         }
         catch (error) {
@@ -328,12 +304,10 @@ export class BrowserManager {
             newClient.on('Debugger.paused', (params) => {
                 connection.pausedData = params;
                 debug(`Debugger paused: ${params.reason}`);
-                this.notifyToolListChanged();
             });
             newClient.on('Debugger.resumed', () => {
                 connection.pausedData = null;
                 debug('Debugger resumed');
-                this.notifyToolListChanged();
             });
             // Re-enable debugger
             await newClient.send('Debugger.enable');
@@ -360,14 +334,10 @@ export class BrowserManager {
                 // Cast to our type - CDP types are compatible
                 connection.pausedData = params;
                 debug(`Debugger paused: ${params.reason}`);
-                // Notify tool list changed (P1: state transition to "paused")
-                this.notifyToolListChanged();
             });
             client.on('Debugger.resumed', () => {
                 connection.pausedData = null;
                 debug('Debugger resumed');
-                // Notify tool list changed (P1: state transition from "paused")
-                this.notifyToolListChanged();
             });
         }
         // Enable debugger if not already
@@ -375,8 +345,6 @@ export class BrowserManager {
             await connection.cdpSession.send('Debugger.enable');
             connection.debuggerEnabled = true;
             debug('Debugger enabled');
-            // Notify tool list changed (P1: state transition to "debugger enabled")
-            this.notifyToolListChanged();
         }
         return connection.cdpSession;
     }
@@ -511,78 +479,6 @@ export class BrowserManager {
         if (connection) {
             connection.previousStepVars = vars;
         }
-    }
-    /**
-     * Hide tools by pattern or names.
-     *
-     * @param pattern - Pattern to match (e.g., "chrome_*")
-     * @param toolNames - Specific tool names to hide
-     * @returns Number of tools hidden
-     */
-    hideTools(pattern, toolNames) {
-        let hiddenCount = 0;
-        if (pattern) {
-            this.hiddenTools.add(pattern);
-            hiddenCount++;
-        }
-        if (toolNames) {
-            for (const toolName of toolNames) {
-                this.hiddenTools.add(toolName);
-                hiddenCount++;
-            }
-        }
-        // Notify tool list changed
-        this.notifyToolListChanged();
-        return hiddenCount;
-    }
-    /**
-     * Show (restore) hidden tools.
-     *
-     * @param all - Restore all hidden tools
-     * @param toolNames - Specific tool names to restore
-     * @returns Number of tools restored
-     */
-    showTools(all, toolNames) {
-        let restoredCount = 0;
-        if (all) {
-            restoredCount = this.hiddenTools.size;
-            this.hiddenTools.clear();
-        }
-        else if (toolNames) {
-            for (const toolName of toolNames) {
-                if (this.hiddenTools.delete(toolName)) {
-                    restoredCount++;
-                }
-            }
-        }
-        // Notify tool list changed if anything was restored
-        if (restoredCount > 0) {
-            this.notifyToolListChanged();
-        }
-        return restoredCount;
-    }
-    /**
-     * Check if a tool should be hidden based on hidden patterns.
-     *
-     * @param toolName - Tool name to check
-     * @returns True if tool should be hidden
-     */
-    isToolHidden(toolName) {
-        // Check exact match first
-        if (this.hiddenTools.has(toolName)) {
-            return true;
-        }
-        // Check pattern matches
-        for (const pattern of this.hiddenTools) {
-            if (pattern.includes('*')) {
-                const regexPattern = pattern.replace(/\*/g, '.*');
-                const regex = new RegExp(`^${regexPattern}$`);
-                if (regex.test(toolName)) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
     /**
      * Check if debugger is enabled for active connection.
