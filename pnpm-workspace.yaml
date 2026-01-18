@@ -1,0 +1,12 @@
+onlyBuiltDependencies:
+  - '"'
+  - '['
+  - ']'
+  - b
+  - d
+  - e
+  - i
+  - l
+  - puppeteer
+  - s
+  - u
