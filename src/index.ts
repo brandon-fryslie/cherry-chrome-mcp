@@ -15,7 +15,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
-import { USE_SMART_TOOLS } from './config.js';
+import { USE_LEGACY_TOOLS } from './config.js';
 import { browserManager } from './browser.js';
 
 // Import all tools (legacy and new consolidated)
@@ -30,8 +30,6 @@ import {
   chrome,
   target,
   enableDebugTools,
-  hideTools,
-  showTools,
   queryElements,
   clickElement,
   fillElement,
@@ -974,118 +972,14 @@ const smartTools: Tool[] = [
       required: ['state'],
     },
   },
-  // Tool Management (new features)
-  {
-    name: 'hide_tools',
-    description:
-      'Hide tools by pattern or specific names. Hidden tools won\'t appear in tool lists until restored.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        pattern: {
-          type: 'string',
-          description: 'Pattern to match tool names (e.g., "chrome_*")',
-        },
-        tools: {
-          type: 'array',
-          description: 'Array of specific tool names to hide',
-          items: { type: 'string' },
-        },
-      },
-    },
-  },
-  {
-    name: 'show_tools',
-    description: 'Show (restore) hidden tools.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        all: {
-          type: 'boolean',
-          description: 'Restore all hidden tools',
-        },
-        tools: {
-          type: 'array',
-          description: 'Array of specific tool names to restore',
-          items: { type: 'string' },
-        },
-      },
-    },
-  },
 ];
 
 // Select tool set based on feature flag
-const activeTools = USE_SMART_TOOLS ? smartTools : legacyTools;
-
-/**
- * Get visible tools based on current connection state (P1: Dynamic Visibility)
- *
- * This function implements state-based tool filtering:
- * - Not connected: Only chrome and chrome_list_connections
- * - Connected: Add DOM tools, target, enable_debug_tools, hide/show_tools
- * - Debug enabled: Add breakpoint, execution, pause_on_exceptions
- * - Paused: Only step, execution, evaluate, call_stack, show_tools
- */
-function getVisibleSmartTools(): Tool[] {
-  if (!USE_SMART_TOOLS) {
-    return activeTools;
-  }
-
-  const hasConnection = browserManager.hasConnections();
-  const debugEnabled = browserManager.isDebuggerEnabled();
-  const isPaused = browserManager.isPaused();
-
-  // Filter tools based on state
-  const visibleTools = activeTools.filter(tool => {
-    const toolName = tool.name;
-
-    // Check if manually hidden
-    if (browserManager.isToolHidden(toolName)) {
-      return false;
-    }
-
-    // State-based visibility rules
-    if (!hasConnection) {
-      // Not connected: Only connection tools
-      return ['chrome', 'chrome_list_connections'].includes(toolName);
-    }
-
-    if (isPaused) {
-      // Paused: Only stepping and inspection tools
-      return ['step', 'execution', 'evaluate', 'call_stack', 'show_tools'].includes(toolName);
-    }
-
-    if (debugEnabled) {
-      // Debug enabled: All tools except those requiring pause
-      const pauseOnlyTools = ['step', 'evaluate', 'call_stack'];
-      return !pauseOnlyTools.includes(toolName);
-    }
-
-    // Connected but no debugger: DOM and connection tools only
-    const debugOnlyTools = [
-      'enable_debug_tools',
-      'breakpoint',
-      'step',
-      'execution',
-      'evaluate',
-      'call_stack',
-      'pause_on_exceptions'
-    ];
-    return !debugOnlyTools.includes(toolName);
-  });
-
-  return visibleTools;
-}
+const activeTools = USE_LEGACY_TOOLS ? legacyTools : smartTools;
 
 // Handle tool list requests
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  if (!USE_SMART_TOOLS) {
-    return { tools: activeTools };
-  }
-
-  // P1: Use state-based filtering for smart tools
-  const visibleTools = getVisibleSmartTools();
-  return { tools: visibleTools };
+  return { tools: activeTools };
 });
 
 // Handle tool execution
@@ -1093,78 +987,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
 
   try {
-    if (USE_SMART_TOOLS) {
-      // Smart consolidated tools routing
-      switch (name) {
-        // Chrome connection tools
-        case 'chrome':
-          return await chrome(args as Parameters<typeof chrome>[0]);
-
-        case 'chrome_list_connections':
-          return await chromeListConnections();
-
-        case 'chrome_switch_connection':
-          return await chromeSwitchConnection(
-            args as Parameters<typeof chromeSwitchConnection>[0]
-          );
-
-        case 'chrome_disconnect':
-          return await chromeDisconnect(
-            args as Parameters<typeof chromeDisconnect>[0]
-          );
-
-        case 'target':
-          return await target(args as Parameters<typeof target>[0]);
-
-        // DOM tools (same as legacy)
-        case 'query_elements':
-          return await queryElements(args as Parameters<typeof queryElements>[0]);
-
-        case 'click_element':
-          return await clickElement(args as Parameters<typeof clickElement>[0]);
-
-        case 'fill_element':
-          return await fillElement(args as Parameters<typeof fillElement>[0]);
-
-        case 'navigate':
-          return await navigate(args as Parameters<typeof navigate>[0]);
-
-        case 'get_console_logs':
-          return await getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]);
-
-        // Debugger tools (consolidated)
-        case 'enable_debug_tools':
-          return await enableDebugTools(args as Parameters<typeof enableDebugTools>[0]);
-
-        case 'breakpoint':
-          return await breakpoint(args as Parameters<typeof breakpoint>[0]);
-
-        case 'step':
-          return await step(args as Parameters<typeof step>[0]);
-
-        case 'execution':
-          return await execution(args as Parameters<typeof execution>[0]);
-
-        case 'call_stack':
-          return await callStack(args as Parameters<typeof callStack>[0]);
-
-        case 'evaluate':
-          return await evaluate(args as Parameters<typeof evaluate>[0]);
-
-        case 'pause_on_exceptions':
-          return await pauseOnExceptions(args as Parameters<typeof pauseOnExceptions>[0]);
-
-        // Tool management
-        case 'hide_tools':
-          return await hideTools(args as Parameters<typeof hideTools>[0]);
-
-        case 'show_tools':
-          return await showTools(args as Parameters<typeof showTools>[0]);
-
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-    } else {
+    if (USE_LEGACY_TOOLS) {
       // Legacy tools routing
       switch (name) {
         // Chrome connection tools
@@ -1262,6 +1085,70 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
+    } else {
+      // Smart consolidated tools routing
+      switch (name) {
+        // Chrome connection tools
+        case 'chrome':
+          return await chrome(args as Parameters<typeof chrome>[0]);
+
+        case 'chrome_list_connections':
+          return await chromeListConnections();
+
+        case 'chrome_switch_connection':
+          return await chromeSwitchConnection(
+            args as Parameters<typeof chromeSwitchConnection>[0]
+          );
+
+        case 'chrome_disconnect':
+          return await chromeDisconnect(
+            args as Parameters<typeof chromeDisconnect>[0]
+          );
+
+        case 'target':
+          return await target(args as Parameters<typeof target>[0]);
+
+        // DOM tools (same as legacy)
+        case 'query_elements':
+          return await queryElements(args as Parameters<typeof queryElements>[0]);
+
+        case 'click_element':
+          return await clickElement(args as Parameters<typeof clickElement>[0]);
+
+        case 'fill_element':
+          return await fillElement(args as Parameters<typeof fillElement>[0]);
+
+        case 'navigate':
+          return await navigate(args as Parameters<typeof navigate>[0]);
+
+        case 'get_console_logs':
+          return await getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]);
+
+        // Debugger tools (consolidated)
+        case 'enable_debug_tools':
+          return await enableDebugTools(args as Parameters<typeof enableDebugTools>[0]);
+
+        case 'breakpoint':
+          return await breakpoint(args as Parameters<typeof breakpoint>[0]);
+
+        case 'step':
+          return await step(args as Parameters<typeof step>[0]);
+
+        case 'execution':
+          return await execution(args as Parameters<typeof execution>[0]);
+
+        case 'call_stack':
+          return await callStack(args as Parameters<typeof callStack>[0]);
+
+        case 'evaluate':
+          return await evaluate(args as Parameters<typeof evaluate>[0]);
+
+        case 'pause_on_exceptions':
+          return await pauseOnExceptions(args as Parameters<typeof pauseOnExceptions>[0]);
+
+        default:
+          throw new Error(`Unknown tool: ${name}`);
+      }
     }
   } catch (error) {
     return {
@@ -1280,18 +1167,9 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // P1: Register callback for tool list changes (dynamic visibility)
-  if (USE_SMART_TOOLS) {
-    browserManager.setToolListChangedCallback(() => {
-      server.sendToolListChanged().catch(err =>
-        console.error('Failed to notify tool list change:', err)
-      );
-    });
-  }
-
-  const mode = USE_SMART_TOOLS ? 'SMART TOOLS' : 'LEGACY TOOLS';
+  const mode = USE_LEGACY_TOOLS ? 'LEGACY TOOLS' : 'SMART TOOLS';
   console.error(`Cherry Chrome MCP Server running on stdio [MODE: ${mode}]`);
-  console.error(`Set USE_SMART_TOOLS=true to enable consolidated smart tools`);
+  console.error(`Set USE_LEGACY_TOOLS=true to use original granular tools`);
 }
 
 main().catch((error) => {
