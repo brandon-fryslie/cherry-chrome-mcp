@@ -1,12 +1,28 @@
 # Feature Toggle: Smart Consolidated Tools
 
-Cherry Chrome MCP Server supports two tool modes via the `USE_SMART_TOOLS` environment variable.
+Cherry Chrome MCP Server supports two tool modes via the `USE_LEGACY_TOOLS` environment variable.
 
 ## Modes
 
-### Legacy Mode (Default)
+### Smart Mode (Default)
 
-**When:** `USE_SMART_TOOLS` is not set or set to `false`
+**When:** `USE_LEGACY_TOOLS` is not set or set to `false`
+
+**Tools:** Consolidated action-based tools (17 tools)
+- `chrome` (replaces `chrome_connect`, `chrome_launch`)
+- `target` (replaces `list_targets`, `switch_target`)
+- `enable_debug_tools` (replaces `debugger_enable` with semantic intent)
+- `breakpoint` (replaces `debugger_set_breakpoint`, `debugger_remove_breakpoint`)
+- `step` (replaces `debugger_step_over`, `debugger_step_into`, `debugger_step_out`)
+- `execution` (replaces `debugger_resume`, `debugger_pause`)
+- `call_stack`, `evaluate`, `pause_on_exceptions` (renamed for consistency)
+- All DOM tools (unchanged)
+
+**Use case:** Modern consolidated approach, cleaner API
+
+### Legacy Mode
+
+**When:** `USE_LEGACY_TOOLS=true`
 
 **Tools:** Traditional granular tools (23 tools)
 - `chrome_connect`, `chrome_launch`, `chrome_disconnect`
@@ -18,26 +34,9 @@ Cherry Chrome MCP Server supports two tool modes via the `USE_SMART_TOOLS` envir
 
 **Use case:** Backward compatibility, stable production use
 
-### Smart Mode
-
-**When:** `USE_SMART_TOOLS=true`
-
-**Tools:** Consolidated action-based tools (18 tools)
-- `chrome` (replaces `chrome_connect`, `chrome_launch`)
-- `target` (replaces `list_targets`, `switch_target`)
-- `enable_debug_tools` (replaces `debugger_enable` with semantic intent)
-- `breakpoint` (replaces `debugger_set_breakpoint`, `debugger_remove_breakpoint`)
-- `step` (replaces `debugger_step_over`, `debugger_step_into`, `debugger_step_out`)
-- `execution` (replaces `debugger_resume`, `debugger_pause`)
-- `call_stack`, `evaluate`, `pause_on_exceptions` (renamed for consistency)
-- `hide_tools`, `show_tools` (NEW: dynamic tool visibility)
-- All DOM tools (unchanged)
-
-**Use case:** Testing new consolidated approach, advanced features
-
 ## Usage
 
-### Legacy Mode (Default)
+### Smart Mode (Default)
 
 ```bash
 # Direct execution
@@ -50,14 +49,14 @@ npx @modelcontextprotocol/inspector node build/src/index.js
 claude mcp add cherry-chrome -- node /path/to/build/src/index.js
 ```
 
-### Smart Mode
+### Legacy Mode
 
 ```bash
 # Direct execution
-USE_SMART_TOOLS=true node build/src/index.js
+USE_LEGACY_TOOLS=true node build/src/index.js
 
 # With MCP inspector
-USE_SMART_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
+USE_LEGACY_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
 
 # With Claude Desktop (.mcp.json)
 {
@@ -66,7 +65,7 @@ USE_SMART_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
       "command": "node",
       "args": ["/path/to/build/src/index.js"],
       "env": {
-        "USE_SMART_TOOLS": "true"
+        "USE_LEGACY_TOOLS": "true"
       }
     }
   }
@@ -92,8 +91,6 @@ USE_SMART_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
 | `debugger_get_call_stack()` | `call_stack()` | Renamed for consistency |
 | `debugger_evaluate_on_call_frame(frame, expr)` | `evaluate(frame, expr)` | Renamed for consistency |
 | `debugger_set_pause_on_exceptions(state)` | `pause_on_exceptions(state)` | Renamed for consistency |
-| N/A | `hide_tools(pattern/tools)` | NEW |
-| N/A | `show_tools(all/tools)` | NEW |
 
 ## Testing
 
@@ -104,27 +101,29 @@ Run the test script to verify both modes work:
 ```
 
 Expected output:
+- Smart mode (default): `[MODE: SMART TOOLS]` with 17 tools
 - Legacy mode: `[MODE: LEGACY TOOLS]` with 23 tools
-- Smart mode: `[MODE: SMART TOOLS]` with 18 tools
 
 ## Implementation Details
 
-- **Config:** `USE_SMART_TOOLS` flag in `src/config.ts` (default: `false`)
+- **Config:** `USE_LEGACY_TOOLS` flag in `src/config.ts` (default: `false`)
 - **Registration:** Conditional tool array selection in `src/index.ts`
 - **Routing:** Separate switch statements for legacy vs smart tool handlers
 - **Backward compatibility:** All legacy tool implementations remain intact
 - **Server startup:** Logs active mode to stderr
+- **Tool visibility:** All tools are statically registered (no dynamic filtering)
 
-## Migration Path
+## Migration from Previous Version
 
-1. **Phase 1 (Current):** Feature toggle allows testing smart tools alongside legacy
-2. **Phase 2 (Future):** Add P1/P2 features (dynamic visibility, auto-bundled context)
-3. **Phase 3 (Future):** Consider making smart tools the default after validation
-4. **Phase 4 (Future):** Deprecate legacy tools if smart tools prove superior
+If you were previously using `USE_SMART_TOOLS=true`:
+- Remove the environment variable (smart tools are now the default)
+
+If you were using the default (legacy tools):
+- Set `USE_LEGACY_TOOLS=true` to maintain legacy behavior
 
 ## Notes
 
 - The toggle requires **server restart** to change modes (not runtime-switchable)
 - Both modes share the same underlying `BrowserManager` and tool implementations
 - DOM tools are identical in both modes (no consolidation needed)
-- Smart mode includes new features (`hide_tools`, `show_tools`) not available in legacy
+- All tools in each mode are always visible (no dynamic visibility filtering)

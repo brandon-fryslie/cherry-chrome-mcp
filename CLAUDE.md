@@ -27,11 +27,11 @@ npm run clean        # Remove build directory
 
 ### Testing with MCP Inspector
 ```bash
-# Legacy mode (default)
+# Smart mode (default)
 npx @modelcontextprotocol/inspector node build/src/index.js
 
-# Smart mode
-USE_SMART_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
+# Legacy mode
+USE_LEGACY_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
 ```
 
 ### Testing with Claude Code
@@ -41,10 +41,10 @@ claude mcp add --scope project cherry-chrome -- node /absolute/path/to/build/src
 
 ## Feature Toggle: Legacy vs Smart Tools
 
-The server supports two tool modes via `USE_SMART_TOOLS` environment variable:
+The server supports two tool modes via `USE_LEGACY_TOOLS` environment variable:
 
-- **Legacy Mode (default):** 23 granular tools (`chrome_connect`, `debugger_enable`, etc.)
-- **Smart Mode:** 18 consolidated action-based tools (`chrome`, `step`, `execution`, etc.)
+- **Smart Mode (default):** 17 consolidated action-based tools (`chrome`, `step`, `execution`, etc.)
+- **Legacy Mode:** 23 granular tools (`chrome_connect`, `debugger_enable`, etc.)
 
 See `FEATURE-TOGGLE.md` for full details, usage examples, and tool comparison table.
 
@@ -56,7 +56,7 @@ See `FEATURE-TOGGLE.md` for full details, usage examples, and tool comparison ta
 src/
 ├── index.ts          # MCP server entry point, tool registration (with feature toggle)
 ├── browser.ts        # BrowserManager - multi-instance connection management
-├── config.ts         # Configuration constants (including USE_SMART_TOOLS flag)
+├── config.ts         # Configuration constants (including USE_LEGACY_TOOLS flag)
 ├── response.ts       # Response formatting, size checking utilities
 ├── types.ts          # TypeScript type definitions
 └── tools/
@@ -73,7 +73,6 @@ src/
 - Each `connection_id` maps to a Browser + Page + CDPSession
 - Tracks active connection for default tool operations
 - Handles CDP event listeners for `Debugger.paused` / `Debugger.resumed`
-- Supports tool visibility management (`hideTools`, `showTools`, `isToolHidden`)
 
 **Response Utilities (`src/response.ts`)**
 - `checkResultSize()` - Rejects oversized results with smart suggestions
@@ -84,7 +83,7 @@ src/
 - `MAX_RESULT_SIZE = 5000` - Result size limit (~1250 tokens)
 - `MAX_DOM_DEPTH = 3` - Default DOM depth filter
 - `HARD_MAX_DOM_DEPTH = 10` - Maximum allowed depth
-- `USE_SMART_TOOLS` - Feature toggle (default: `false` for backward compatibility)
+- `USE_LEGACY_TOOLS` - Feature toggle (default: `false`, smart tools enabled)
 
 ### Tool Categories
 
@@ -93,11 +92,10 @@ src/
 - DOM Interaction (5): `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`
 - Debugger (11): `debugger_enable`, `debugger_set_breakpoint`, `debugger_get_call_stack`, `debugger_evaluate_on_call_frame`, `debugger_step_over`, `debugger_step_into`, `debugger_step_out`, `debugger_resume`, `debugger_pause`, `debugger_remove_breakpoint`, `debugger_set_pause_on_exceptions`
 
-**Smart Mode (18 tools):**
+**Smart Mode (17 tools):**
 - Chrome Connection (5): `chrome` (consolidated), `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `target` (consolidated)
 - DOM Interaction (5): Same as legacy mode
-- Debugger (6): `enable_debug_tools`, `breakpoint` (consolidated), `step` (consolidated), `execution` (consolidated), `call_stack`, `evaluate`, `pause_on_exceptions`
-- Tool Management (2): `hide_tools`, `show_tools` (NEW)
+- Debugger (7): `enable_debug_tools`, `breakpoint` (consolidated), `step` (consolidated), `execution` (consolidated), `call_stack`, `evaluate`, `pause_on_exceptions`
 
 ## Implementation Patterns
 
