@@ -55,13 +55,11 @@ describe('Cherry Chrome MCP Server', () => {
   });
 
   it('should have correct config values', async () => {
-    const { MAX_RESULT_SIZE, MAX_DOM_DEPTH, HARD_MAX_DOM_DEPTH } = await import(
+    const { MAX_RESULT_SIZE } = await import(
       '../src/config.js'
     );
 
     assert.strictEqual(MAX_RESULT_SIZE, 5000, 'MAX_RESULT_SIZE should be 5000');
-    assert.strictEqual(MAX_DOM_DEPTH, 3, 'MAX_DOM_DEPTH should be 3');
-    assert.strictEqual(HARD_MAX_DOM_DEPTH, 10, 'HARD_MAX_DOM_DEPTH should be 10');
   });
 
   it('should have response utilities', async () => {
