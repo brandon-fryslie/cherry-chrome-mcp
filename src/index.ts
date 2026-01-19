@@ -226,6 +226,15 @@ const legacyTools: Tool[] = [
           description: 'Maximum number of elements to return',
           default: 5,
         },
+        text_contains: {
+          type: 'string',
+          description: 'Filter to elements containing this text (case-insensitive partial match)',
+        },
+        include_hidden: {
+          type: 'boolean',
+          description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
+          default: false,
+        },
         connection_id: {
           type: 'string',
           description: 'Chrome connection to use (uses active if not specified)',
@@ -677,6 +686,15 @@ const smartTools: Tool[] = [
           type: 'number',
           description: 'Maximum number of elements to return',
           default: 5,
+        },
+        text_contains: {
+          type: 'string',
+          description: 'Filter to elements containing this text (case-insensitive partial match)',
+        },
+        include_hidden: {
+          type: 'boolean',
+          description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
+          default: false,
         },
         connection_id: {
           type: 'string',
