@@ -9,6 +9,7 @@ Cherry Chrome MCP is a TypeScript MCP server for Chrome automation with CSS sele
 **Key Features:**
 - CSS selector-based DOM queries (not accessibility tree refs)
 - Result limit controls (default 5 elements, max 20)
+- Text and visibility filters for query_elements
 - Multi-instance Chrome connection support
 - Full JavaScript debugger via CDP (breakpoints, stepping, evaluation)
 - Smart result size analysis (rejects oversized results with suggestions)
@@ -97,24 +98,68 @@ src/
 
 ## Implementation Patterns
 
-### Query Elements with Limit Control
+### Query Elements with Filters
 
-The `query_elements` tool returns up to a specified limit (default 5, max 20):
+The `query_elements` tool supports limit controls and filtering:
 
+**Limit Control:**
 ```typescript
 // Returns first 5 elements matching selector by default
 const result = await queryElements({ selector: 'button' });
 
 // Can specify higher limit (up to 20)
 const result = await queryElements({ selector: 'div', limit: 10 });
-
-// Elements with children show child count info
-// [ELIDED N DIRECT CHILD ELEMENTS (M total). INCREASE SELECTOR SPECIFICITY]
 ```
 
-When results exceed the limit, a hint is shown:
+**Text Content Filtering:**
+```typescript
+// Find only buttons containing "Submit" (case-insensitive)
+const result = await queryElements({
+  selector: 'button',
+  text_contains: 'Submit'
+});
+
+// Partial matches work ("Sub" matches "Submit Form")
+const result = await queryElements({
+  selector: 'button',
+  text_contains: 'Sub'
+});
 ```
-[15 more element(s) not shown. Use a more specific selector to narrow results.]
+
+**Visibility Filtering:**
+```typescript
+// By default, only visible elements are returned (include_hidden: false)
+const result = await queryElements({ selector: 'div' });
+
+// Include hidden elements (display:none, visibility:hidden, zero size)
+const result = await queryElements({
+  selector: 'div',
+  include_hidden: true
+});
+```
+
+**Combined Filters:**
+```typescript
+// Only visible buttons with "Login" text
+const result = await queryElements({
+  selector: 'button',
+  text_contains: 'Login',
+  include_hidden: false  // default, can be omitted
+});
+```
+
+**Filter Order:**
+1. CSS selector match (`document.querySelectorAll`)
+2. Visibility filter (unless `include_hidden: true`)
+3. Text filter (if `text_contains` provided)
+4. Limit applied to remaining elements
+
+When filters are active, output shows filter summary:
+```
+Found 50 element(s) matching 'button'
+  Visibility filter: 10 hidden element(s) excluded
+  Text filter "Submit": 35 element(s) excluded
+Showing first 5 of 5 remaining:
 ```
 
 ### CDP Debugger Access
