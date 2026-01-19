@@ -1,0 +1,50 @@
+Agent: iterative-implementer | 2026-01-18
+Mode: manual
+Completed: HTML snippets, Structure skeletons, Interactive elements | Files: 4 | Commits: 2
+Tests: All passing
+Cache invalidated: None (changes isolated to query_elements output)
+Status: complete
+
+Summary:
+Implemented query-elements-structure feature with all acceptance criteria:
+
+1. HTML snippet (always shown):
+   - Element opening tag with attributes
+   - No children, 200 char limit
+   - Added as `html` field
+
+2. Structure skeleton (if has children):
+   - CSS-like syntax: div*N, > child, + sibling
+   - Groups repeated patterns
+   - Depth 2, ~100 char limit
+   - Added as `structure` field
+
+3. Interactive elements (if has interactive children):
+   - Detects button, a, input, select, textarea, role=*
+   - Shortest selector (id > data-testid > tag.class)
+   - Up to 6 items with "+N more"
+   - Added as `interactive` field
+
+4. Output formatting:
+   - HTML after Classes
+   - Structure after HTML
+   - Interactive after Structure
+   - Children line unchanged
+
+5. Types updated in src/types.ts
+6. Documentation updated in CLAUDE.md and README.md
+
+Verification:
+- npm run build: Success
+- npm test: All 5 tests passing
+- No runtime verification needed (output format change only)
+
+Files modified:
+- src/types.ts (new fields: html, structure, interactive)
+- src/tools/dom.ts (extraction functions + output formatting)
+- CLAUDE.md (Query Elements Output Format section)
+- README.md (Query Elements Output Format section)
+
+Commits:
+- 65d3052: feat(query_elements): add HTML snippets and structure summary
+- af0a966: docs: document query_elements HTML and structure output
