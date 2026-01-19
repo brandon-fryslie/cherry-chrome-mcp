@@ -3,32 +3,44 @@
 ## Acceptance Criteria
 
 ### AC1: Suggestion Gathering Function
-- [ ] `gatherZeroResultSuggestions(page, selector)` function exists in `context.ts`
-- [ ] Function gathers page inventory (classes, IDs, tags, data attributes)
-- [ ] Function extracts search terms from attempted selector
-- [ ] Function returns formatted string of suggestions
+- [x] `gatherZeroResultSuggestions(page, selector)` function exists in `context.ts`
+- [x] Function gathers page inventory (classes, IDs, tags, data attributes)
+- [x] Function extracts search terms from attempted selector
+- [x] Function returns formatted string of suggestions
 
 ### AC2: Fuzzy Matching Logic
-- [ ] Classes containing search terms are suggested with counts
-- [ ] IDs containing search terms are suggested
-- [ ] Tags from attempted selector are matched
-- [ ] Results sorted by relevance/count, limited to top 5
+- [x] Classes containing search terms are suggested with counts
+- [x] IDs containing search terms are suggested
+- [x] Tags from attempted selector are matched
+- [x] Results sorted by relevance/count, limited to top 5
 
 ### AC3: Integration with queryElements
-- [ ] Zero-result case calls `gatherZeroResultSuggestions()`
-- [ ] Response includes original "No elements found" message
-- [ ] Response includes similar selectors section
-- [ ] Response includes page structure summary
+- [x] Zero-result case calls `gatherZeroResultSuggestions()`
+- [x] Response includes original "No elements found" message
+- [x] Response includes similar selectors section
+- [x] Response includes page structure summary
 
 ### AC4: Page Structure Summary
-- [ ] Shows count of interactive elements (buttons, inputs, links, forms)
-- [ ] Shows total element count
-- [ ] Information is concise and actionable
+- [x] Shows count of interactive elements (buttons, inputs, links, forms)
+- [x] Shows total element count
+- [x] Information is concise and actionable
 
 ### AC5: Build & Tests
-- [ ] `npm run build` passes
-- [ ] No TypeScript errors
-- [ ] Existing tests still pass
+- [x] `npm run build` passes
+- [x] No TypeScript errors
+- [x] Existing tests still pass
+
+## Implementation Complete
+
+All acceptance criteria met in commit cdab826:
+- Added `PageInventory` and `SelectorSuggestion` types to `src/types.ts`
+- Implemented `gatherZeroResultSuggestions()` in `src/tools/context.ts` with:
+  - `extractSearchTerms()` helper to parse selectors
+  - `findSimilarSelectors()` helper for fuzzy matching
+  - Page inventory gathering via JavaScript execution
+- Integrated with `queryElements()` in `src/tools/dom.ts`
+- Build passes with no TypeScript errors
+- All existing tests pass (5/5)
 
 ## Example Output
 
@@ -47,6 +59,6 @@ Page structure:
 
 ## Verification
 
-1. Build: `npm run build`
-2. Manual test with MCP Inspector on a page with elements
-3. Try a selector that doesn't exist, verify suggestions appear
+1. Build: `npm run build` ✓
+2. Manual test with MCP Inspector on a page with elements (ready for user testing)
+3. Try a selector that doesn't exist, verify suggestions appear (ready for user testing)
