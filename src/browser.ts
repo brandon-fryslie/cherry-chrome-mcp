@@ -62,12 +62,68 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Check if console message is from HMR framework
+ */
+function isHmrMessage(text: string): boolean {
+  return /^\[(HMR|WDS|vite)\]/.test(text);
+}
+
+/**
+ * Check if HMR message indicates a module update
+ */
+function isHmrUpdateMessage(text: string): boolean {
+  return isHmrMessage(text) && /updat(e|ed|ing)/i.test(text);
+}
+
+/**
  * Browser Manager - handles multiple Chrome connections
  * Ported from Python CDPConnectionManager
  */
 export class BrowserManager {
   private connections: Map<string, Connection> = new Map();
   private activeConnectionId: string | null = null;
+
+  /**
+   * Setup console capture and navigation tracking for a page
+   */
+  private setupPageListeners(connection: Connection, page: Page): void {
+    // Clear any existing listeners to prevent duplicates
+    page.removeAllListeners('console');
+    page.removeAllListeners('load');
+
+    // Enable console capture with HMR detection
+    page.on('console', (msg) => {
+      const text = msg.text();
+      const isHmr = isHmrMessage(text);
+
+      // Track HMR updates
+      if (isHmrUpdateMessage(text)) {
+        connection.hmrUpdateCount++;
+        connection.lastHmrTime = Date.now();
+        debug(`HMR update detected (count: ${connection.hmrUpdateCount}): ${text}`);
+      }
+
+      connection.consoleLogs.push({
+        level: msg.type(),
+        text: text,
+        timestamp: Date.now(),
+        navigationEpoch: connection.navigationEpoch,
+      });
+    });
+
+    // Track page navigations/reloads
+    page.on('load', () => {
+      connection.navigationEpoch++;
+      connection.lastNavigationTime = Date.now();
+      connection.hmrUpdateCount = 0;
+      connection.lastHmrTime = null;
+
+      // Clear pre-navigation messages
+      connection.consoleLogs = [];
+
+      debug(`Navigation detected (epoch: ${connection.navigationEpoch})`);
+    });
+  }
 
   /**
    * Connect to an existing Chrome instance running with remote debugging.
@@ -126,18 +182,9 @@ export class BrowserManager {
       const page = pages[0];
       info(`Using page: ${page.url()}`);
 
-      // Enable console capture
-      const consoleLogs: ConsoleMessage[] = [];
-      page.on('console', (msg) => {
-        consoleLogs.push({
-          level: msg.type(),
-          text: msg.text(),
-          timestamp: Date.now(),
-        });
-      });
-
-      // Store connection
-      this.connections.set(connectionId, {
+      // Initialize connection
+      const now = Date.now();
+      const connection: Connection = {
         browser,
         page,
         cdpSession: null,
@@ -145,9 +192,21 @@ export class BrowserManager {
         pausedData: null,
         breakpoints: new Map(),
         debuggerEnabled: false,
-        consoleLogs,
+        consoleLogs: [],
         consoleEnabled: true,
-      });
+        navigationEpoch: 0,
+        lastNavigationTime: now,
+        hmrUpdateCount: 0,
+        lastHmrTime: null,
+        lastConsoleQuery: null,
+        lastQueryEpoch: null,
+      };
+
+      // Setup console capture and navigation tracking
+      this.setupPageListeners(connection, page);
+
+      // Store connection
+      this.connections.set(connectionId, connection);
 
       // Set as active if first connection
       if (!this.activeConnectionId) {
@@ -356,15 +415,15 @@ export class BrowserManager {
     // Update the page reference
     connection.page = page;
 
-    // Re-setup console capture on new page
+    // Increment navigation epoch and reset state
+    connection.navigationEpoch++;
+    connection.lastNavigationTime = Date.now();
+    connection.hmrUpdateCount = 0;
+    connection.lastHmrTime = null;
     connection.consoleLogs = [];
-    page.on('console', (msg) => {
-      connection.consoleLogs.push({
-        level: msg.type(),
-        text: msg.text(),
-        timestamp: Date.now(),
-      });
-    });
+
+    // Re-setup console capture and navigation tracking on new page
+    this.setupPageListeners(connection, page);
 
     // If debugger was enabled, need to recreate CDP session for new page
     if (connection.debuggerEnabled) {
@@ -385,6 +444,8 @@ export class BrowserManager {
       // Re-enable debugger
       await newClient.send('Debugger.enable');
     }
+
+    debug(`Switched to new page (epoch: ${connection.navigationEpoch})`);
   }
 
   /**
