@@ -21,6 +21,12 @@ import type {
   BreakpointInfo,
   ConsoleMessage,
 } from './types.js';
+import {
+  ChromeNotConnectedError,
+  DebuggerNotEnabledError,
+  ExecutionNotPausedError,
+  ExecutionAlreadyPausedError,
+} from './errors.js';
 
 /**
  * Log debug messages to stderr
@@ -548,6 +554,89 @@ export class BrowserManager {
   getPage(connectionId?: string): Page | null {
     const connection = this.getConnection(connectionId);
     return connection?.page || null;
+  }
+
+  /**
+   * SINGLE ENFORCER: Get connection or throw with clear error message.
+   * All tools that need a connection should call this.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Connection (never null)
+   * @throws {ChromeNotConnectedError} If no connection exists
+   */
+  getConnectionOrThrow(connectionId?: string): Connection {
+    const connection = this.getConnection(connectionId);
+    if (!connection) {
+      throw new ChromeNotConnectedError(connectionId);
+    }
+    return connection;
+  }
+
+  /**
+   * Get page or throw with clear error message.
+   * Uses getConnectionOrThrow internally.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Page (never null)
+   * @throws {ChromeNotConnectedError} If no connection exists
+   */
+  getPageOrThrow(connectionId?: string): Page {
+    const connection = this.getConnectionOrThrow(connectionId);
+    return connection.page;
+  }
+
+  /**
+   * Get CDP session or throw with DIFFERENTIATED error messages.
+   * Distinguishes between "no connection" vs "debugger not enabled".
+   *
+   * @param connectionId - Optional connection ID
+   * @returns CDP session (never null)
+   * @throws {ChromeNotConnectedError} If no connection exists
+   * @throws {DebuggerNotEnabledError} If debugger not enabled
+   */
+  getCDPSessionOrThrow(connectionId?: string): CDPSession {
+    const connection = this.getConnectionOrThrow(connectionId); // Throws if no connection
+
+    if (!connection.cdpSession || !connection.debuggerEnabled) {
+      throw new DebuggerNotEnabledError(connectionId);
+    }
+    return connection.cdpSession;
+  }
+
+  /**
+   * Verify execution is paused or throw.
+   *
+   * @param connectionId - Optional connection ID
+   * @returns Paused data (never null)
+   * @throws {ChromeNotConnectedError} If no connection exists
+   * @throws {DebuggerNotEnabledError} If debugger not enabled
+   * @throws {ExecutionNotPausedError} If not paused
+   */
+  requirePaused(connectionId?: string): DebuggerPausedEvent {
+    this.getCDPSessionOrThrow(connectionId); // Ensures debugger is enabled first
+
+    const pausedData = this.getPausedData(connectionId);
+    if (!pausedData) {
+      throw new ExecutionNotPausedError();
+    }
+    return pausedData;
+  }
+
+  /**
+   * Verify execution is NOT paused or throw.
+   *
+   * @param connectionId - Optional connection ID
+   * @throws {ChromeNotConnectedError} If no connection exists
+   * @throws {DebuggerNotEnabledError} If debugger not enabled
+   * @throws {ExecutionAlreadyPausedError} If already paused
+   */
+  requireNotPaused(connectionId?: string): void {
+    this.getCDPSessionOrThrow(connectionId); // Ensures debugger is enabled first
+
+    const pausedData = this.getPausedData(connectionId);
+    if (pausedData) {
+      throw new ExecutionAlreadyPausedError();
+    }
   }
 
   /**
