@@ -74,6 +74,18 @@ export interface Connection {
   consoleEnabled: boolean;
   /** Previous step variables for change tracking (P2) */
   previousStepVars?: Record<string, string>;
+  /** Navigation epoch - increments on each full navigation/reload */
+  navigationEpoch: number;
+  /** Timestamp of last navigation */
+  lastNavigationTime: number;
+  /** HMR update count since last navigation */
+  hmrUpdateCount: number;
+  /** Timestamp of last HMR update (null if none) */
+  lastHmrTime: number | null;
+  /** Timestamp of last get_console_logs call (null if never called) */
+  lastConsoleQuery: number | null;
+  /** Navigation epoch at last query (null if never queried) */
+  lastQueryEpoch: number | null;
 }
 
 /**
@@ -174,4 +186,6 @@ export interface ConsoleMessage {
   url?: string;
   /** Line number if available */
   lineNumber?: number;
+  /** Navigation epoch when message was captured */
+  navigationEpoch: number;
 }
