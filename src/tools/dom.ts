@@ -14,20 +14,6 @@ import type { QueryElementsResult, DomActionResult } from '../types.js';
 import { gatherNavigateContext, gatherActionContext } from './context.js';
 
 /**
- * Get page for a connection, with error handling.
- */
-function getPage(connectionId?: string) {
-  const connection = browserManager.getConnection(connectionId);
-  if (!connection) {
-    const id = connectionId || 'active';
-    throw new Error(
-      `No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`
-    );
-  }
-  return connection.page;
-}
-
-/**
  * Format time difference as human-readable string
  */
 function formatTimeSince(timestamp: number): string {
@@ -61,7 +47,7 @@ export async function queryElements(args: {
   }
 
   try {
-    const page = getPage(args.connection_id);
+    const page = browserManager.getPageOrThrow(args.connection_id);
     const escapedSelector = escapeForJs(selector);
 
     // JavaScript to execute in page context
@@ -172,9 +158,7 @@ export async function queryElements(args: {
       if (el.childInfo) {
         const direct = el.childInfo.directChildren;
         const total = el.childInfo.totalDescendants;
-        output.push(
-          `    [ELIDED ${direct} DIRECT CHILD ELEMENT${direct !== 1 ? 'S' : ''} (${total} element${total !== 1 ? 's' : ''} total). INCREASE SELECTOR SPECIFICITY]`
-        );
+        output.push(`    Children: ${direct} direct, ${total} total`);
       }
 
       output.push('');
@@ -191,7 +175,7 @@ export async function queryElements(args: {
       checkResultSize(result, undefined, 'query_elements', data)
     );
   } catch (error) {
-    return errorResponse(`Error querying elements: ${error}`);
+    return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -212,7 +196,7 @@ export async function clickElement(args: {
   const includeContext = args.include_context ?? true;
 
   try {
-    const page = getPage(args.connection_id);
+    const page = browserManager.getPageOrThrow(args.connection_id);
     const escapedSelector = escapeForJs(selector);
 
     // JavaScript click with fallback (ported from Python)
@@ -255,7 +239,7 @@ export async function clickElement(args: {
       return errorResponse(`Failed: ${result.error}`);
     }
   } catch (error) {
-    return errorResponse(`Error clicking element: ${error}`);
+    return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -280,7 +264,7 @@ export async function fillElement(args: {
   const includeContext = args.include_context ?? true;
 
   try {
-    const page = getPage(args.connection_id);
+    const page = browserManager.getPageOrThrow(args.connection_id);
     const escapedSelector = escapeForJs(selector);
     const escapedText = escapeForJs(text);
 
@@ -336,7 +320,7 @@ export async function fillElement(args: {
       return errorResponse(`Failed: ${result.error}`);
     }
   } catch (error) {
-    return errorResponse(`Error filling element: ${error}`);
+    return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -352,7 +336,7 @@ export async function navigate(args: {
   const includeContext = args.include_context ?? true;
 
   try {
-    const page = getPage(args.connection_id);
+    const page = browserManager.getPageOrThrow(args.connection_id);
     await page.goto(args.url, { waitUntil: 'networkidle2' });
 
     let response = `Navigated to ${args.url}`;
@@ -367,7 +351,7 @@ export async function navigate(args: {
 
     return successResponse(response);
   } catch (error) {
-    return errorResponse(`Error navigating: ${error}`);
+    return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -386,14 +370,8 @@ export async function getConsoleLogs(args: {
   const limit = args.limit ?? 3;
 
   try {
-    // Verify connection exists
-    const connection = browserManager.getConnection(args.connection_id);
-    if (!connection) {
-      const id = args.connection_id || 'active';
-      throw new Error(
-        `No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`
-      );
-    }
+    // Verify connection exists using throwing method
+    const connection = browserManager.getConnectionOrThrow(args.connection_id);
 
     // Get logs from browser manager
     const logs = browserManager.getConsoleLogs(args.connection_id);
@@ -454,6 +432,6 @@ export async function getConsoleLogs(args: {
 
     return successResponse(output.join('\n'));
   } catch (error) {
-    return errorResponse(`Error getting console logs: ${error}`);
+    return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
