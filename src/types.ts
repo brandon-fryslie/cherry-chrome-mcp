@@ -103,9 +103,6 @@ export interface ConnectionStatus {
  */
 export interface QueryElementsResult {
   found: number;
-  foundAfterDepthFilter: number;
-  filteredByDepth: number;
-  maxDepth: number;
   elements: ElementInfo[];
 }
 
@@ -120,7 +117,6 @@ export interface ElementInfo {
   id: string | null;
   classes: string[];
   visible: boolean;
-  depth: number;
   childInfo: ChildInfo | null;
   position: {
     x: number;
@@ -137,7 +133,7 @@ export interface ElementInfo {
 }
 
 /**
- * Child element info for depth-limited elements
+ * Child element info for elements with children
  */
 export interface ChildInfo {
   directChildren: number;

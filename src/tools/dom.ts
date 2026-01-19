@@ -4,7 +4,6 @@
  */
 
 import { browserManager } from '../browser.js';
-import { MAX_DOM_DEPTH, HARD_MAX_DOM_DEPTH } from '../config.js';
 import {
   checkResultSize,
   successResponse,
@@ -45,45 +44,29 @@ function formatTimeSince(timestamp: number): string {
 /**
  * Find elements by CSS selector and return their details.
  *
- * Automatically filters out deeply nested elements (depth > 3 from body) to prevent
- * returning the entire page when using broad selectors like "div" or "*".
- * This forces you to use specific selectors and keeps results compact.
+ * Returns up to 'limit' elements (default 5, max 20).
+ * Use specific selectors to narrow results when needed.
  */
 export async function queryElements(args: {
   selector: string;
   limit?: number;
-  max_depth?: number;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const selector = args.selector;
-  const limit = args.limit ?? 20;
-  let maxDepth = args.max_depth ?? MAX_DOM_DEPTH;
+  let limit = args.limit ?? 5;
 
-  // Enforce hard limit
-  if (maxDepth > HARD_MAX_DOM_DEPTH) {
-    maxDepth = HARD_MAX_DOM_DEPTH;
+  // Enforce hard limit at 20
+  if (limit > 20) {
+    limit = 20;
   }
 
   try {
     const page = getPage(args.connection_id);
     const escapedSelector = escapeForJs(selector);
 
-    // JavaScript to execute in page context (ported from Python)
+    // JavaScript to execute in page context
     const script = `
       (() => {
-        const maxDepth = ${maxDepth};
-
-        // Calculate depth from body
-        function getDepth(el) {
-          let depth = 0;
-          let current = el;
-          while (current && current !== document.body) {
-            depth++;
-            current = current.parentElement;
-          }
-          return depth;
-        }
-
         // Count total descendants
         function countDescendants(el) {
           let count = 0;
@@ -100,31 +83,18 @@ export async function queryElements(args: {
         // Get all matching elements
         const allElements = Array.from(document.querySelectorAll('${escapedSelector}'));
 
-        // Filter by depth
-        const elementsWithDepth = allElements.map(el => ({
-          element: el,
-          depth: getDepth(el)
-        }));
-
-        const filteredElements = elementsWithDepth.filter(item => item.depth <= maxDepth);
-        const filtered = allElements.length - filteredElements.length;
-
-        // Apply limit and extract data
+        // Apply limit (no depth filtering)
         const limit = ${limit};
-        const limitedElements = filteredElements.slice(0, limit);
+        const limitedElements = allElements.slice(0, limit);
 
         return {
           found: allElements.length,
-          foundAfterDepthFilter: filteredElements.length,
-          filteredByDepth: filtered,
-          maxDepth: maxDepth,
-          elements: limitedElements.map((item, idx) => {
-            const el = item.element;
+          elements: limitedElements.map((el, idx) => {
             const rect = el.getBoundingClientRect();
 
-            // If this element is at max depth, count its children
+            // Show childInfo for ALL elements with children (not just at max depth)
             let childInfo = null;
-            if (item.depth === maxDepth && el.children.length > 0) {
+            if (el.children.length > 0) {
               childInfo = {
                 directChildren: el.children.length,
                 totalDescendants: countDescendants(el)
@@ -139,7 +109,6 @@ export async function queryElements(args: {
               id: el.id || null,
               classes: el.className ? el.className.split(' ').filter(c => c) : [],
               visible: el.offsetParent !== null,
-              depth: item.depth,
               childInfo: childInfo,
               position: {
                 x: Math.round(rect.x),
@@ -168,30 +137,13 @@ export async function queryElements(args: {
     // Build output
     const output: string[] = [];
 
-    const foundTotal = data.found;
-    const foundFiltered = data.foundAfterDepthFilter;
-    const filteredCount = data.filteredByDepth;
-    const maxDepthUsed = data.maxDepth;
-
-    if (filteredCount > 0) {
-      output.push(`Found ${foundTotal} element(s) matching '${selector}'`);
-      output.push(
-        `Filtered out ${filteredCount} deeply nested element(s) (depth > ${maxDepthUsed})`
-      );
-      output.push(
-        `Showing first ${Math.min(foundFiltered, limit)} of ${foundFiltered} remaining:`
-      );
-    } else {
-      output.push(
-        `Found ${foundTotal} element(s) matching '${selector}' (showing first ${Math.min(foundTotal, limit)}):`
-      );
-    }
+    const total = data.found;
+    const shown = data.elements.length;
+    output.push(`Found ${total} element(s) matching '${selector}' (showing first ${shown}):`);
     output.push('');
 
     for (const el of data.elements) {
-      const depthInfo =
-        el.depth !== undefined ? ` (depth: ${el.depth})` : '';
-      output.push(`[${el.index}] <${el.tag}>${depthInfo}`);
+      output.push(`[${el.index}] <${el.tag}>`);
 
       if (el.id) {
         output.push(`    ID: #${el.id}`);
@@ -216,7 +168,7 @@ export async function queryElements(args: {
 
       output.push(`    Visible: ${el.visible}`);
 
-      // Show inline elision message if this element has children that were filtered
+      // Show child info for elements with children
       if (el.childInfo) {
         const direct = el.childInfo.directChildren;
         const total = el.childInfo.totalDescendants;
@@ -225,6 +177,12 @@ export async function queryElements(args: {
         );
       }
 
+      output.push('');
+    }
+
+    // Add hint if results were truncated
+    if (total > shown) {
+      output.push(`[${total - shown} more element(s) not shown. Use a more specific selector to narrow results.]`);
       output.push('');
     }
 
