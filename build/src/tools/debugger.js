@@ -18,7 +18,7 @@ export async function debuggerEnable(args) {
         return successResponse('Debugger enabled successfully.\n\nYou can now set breakpoints, step through code, and inspect variables.');
     }
     catch (error) {
-        return errorResponse(`Error enabling debugger: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -62,7 +62,7 @@ Line: ${line_number}`;
         return successResponse(response);
     }
     catch (error) {
-        return errorResponse(`Error setting breakpoint: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -73,10 +73,7 @@ Line: ${line_number}`;
 export async function debuggerRemoveBreakpoint(args) {
     const { breakpoint_id, connection_id } = args;
     try {
-        const cdpSession = browserManager.getCDPSession(connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
+        const cdpSession = browserManager.getCDPSessionOrThrow(connection_id);
         await cdpSession.send('Debugger.removeBreakpoint', {
             breakpointId: breakpoint_id,
         });
@@ -85,7 +82,7 @@ export async function debuggerRemoveBreakpoint(args) {
         return successResponse(`Breakpoint ${breakpoint_id} removed successfully.`);
     }
     catch (error) {
-        return errorResponse(`Error removing breakpoint: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -95,10 +92,7 @@ export async function debuggerRemoveBreakpoint(args) {
  */
 export async function debuggerGetCallStack(args) {
     try {
-        const pausedData = browserManager.getPausedData(args.connection_id);
-        if (!pausedData) {
-            return errorResponse('Execution is not paused. Use debugger_pause() to pause execution.');
-        }
+        const pausedData = browserManager.requirePaused(args.connection_id);
         const frames = pausedData.callFrames;
         if (!frames || frames.length === 0) {
             return successResponse('No call stack available.');
@@ -120,7 +114,7 @@ export async function debuggerGetCallStack(args) {
         return successResponse(lines.join('\n'));
     }
     catch (error) {
-        return errorResponse(`Error getting call stack: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -131,10 +125,7 @@ export async function debuggerGetCallStack(args) {
 export async function debuggerEvaluateOnCallFrame(args) {
     const { call_frame_id, expression, connection_id } = args;
     try {
-        const cdpSession = browserManager.getCDPSession(connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
+        const cdpSession = browserManager.getCDPSessionOrThrow(connection_id);
         const result = await cdpSession.send('Debugger.evaluateOnCallFrame', {
             callFrameId: call_frame_id,
             expression,
@@ -144,7 +135,7 @@ export async function debuggerEvaluateOnCallFrame(args) {
         return successResponse(`Expression: ${expression}\n\nResult:\n${resultText}`);
     }
     catch (error) {
-        return errorResponse(`Error evaluating expression: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -154,18 +145,13 @@ export async function debuggerEvaluateOnCallFrame(args) {
  */
 export async function debuggerStepOver(args) {
     try {
-        const cdpSession = browserManager.getCDPSession(args.connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
-        if (!browserManager.isPaused(args.connection_id)) {
-            return errorResponse('Execution is not paused.');
-        }
+        browserManager.requirePaused(args.connection_id);
+        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
         await cdpSession.send('Debugger.stepOver');
         return successResponse('Stepped over to next line. Execution will pause at the next statement.');
     }
     catch (error) {
-        return errorResponse(`Error stepping over: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -175,18 +161,13 @@ export async function debuggerStepOver(args) {
  */
 export async function debuggerStepInto(args) {
     try {
-        const cdpSession = browserManager.getCDPSession(args.connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
-        if (!browserManager.isPaused(args.connection_id)) {
-            return errorResponse('Execution is not paused.');
-        }
+        browserManager.requirePaused(args.connection_id);
+        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
         await cdpSession.send('Debugger.stepInto');
         return successResponse('Stepped into function. Execution will pause at the first statement inside.');
     }
     catch (error) {
-        return errorResponse(`Error stepping into: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -196,18 +177,13 @@ export async function debuggerStepInto(args) {
  */
 export async function debuggerStepOut(args) {
     try {
-        const cdpSession = browserManager.getCDPSession(args.connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
-        if (!browserManager.isPaused(args.connection_id)) {
-            return errorResponse('Execution is not paused.');
-        }
+        browserManager.requirePaused(args.connection_id);
+        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
         await cdpSession.send('Debugger.stepOut');
         return successResponse('Stepped out of function. Execution will pause after returning to caller.');
     }
     catch (error) {
-        return errorResponse(`Error stepping out: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -217,18 +193,13 @@ export async function debuggerStepOut(args) {
  */
 export async function debuggerResume(args) {
     try {
-        const cdpSession = browserManager.getCDPSession(args.connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
-        if (!browserManager.isPaused(args.connection_id)) {
-            return errorResponse('Execution is not paused.');
-        }
+        browserManager.requirePaused(args.connection_id);
+        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
         await cdpSession.send('Debugger.resume');
         return successResponse('Execution resumed. Will pause at next breakpoint or debugger statement.');
     }
     catch (error) {
-        return errorResponse(`Error resuming: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -238,18 +209,13 @@ export async function debuggerResume(args) {
  */
 export async function debuggerPause(args) {
     try {
-        const cdpSession = browserManager.getCDPSession(args.connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
-        if (browserManager.isPaused(args.connection_id)) {
-            return errorResponse('Execution is already paused.');
-        }
+        browserManager.requireNotPaused(args.connection_id);
+        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
         await cdpSession.send('Debugger.pause');
         return successResponse('Pause requested. Execution will stop at the next JavaScript statement.');
     }
     catch (error) {
-        return errorResponse(`Error pausing: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -260,10 +226,7 @@ export async function debuggerPause(args) {
 export async function debuggerSetPauseOnExceptions(args) {
     const { state, connection_id } = args;
     try {
-        const cdpSession = browserManager.getCDPSession(connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
+        const cdpSession = browserManager.getCDPSessionOrThrow(connection_id);
         await cdpSession.send('Debugger.setPauseOnExceptions', {
             state,
         });
@@ -275,7 +238,7 @@ export async function debuggerSetPauseOnExceptions(args) {
         return successResponse(`Pause on exceptions set to: ${state}\n\n${messages[state]}`);
     }
     catch (error) {
-        return errorResponse(`Error setting pause on exceptions: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -318,13 +281,8 @@ export async function breakpoint(args) {
 export async function step(args) {
     const includeContext = args.include_context ?? true;
     try {
-        const cdpSession = browserManager.getCDPSession(args.connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
-        if (!browserManager.isPaused(args.connection_id)) {
-            return errorResponse('Execution is not paused.');
-        }
+        browserManager.requirePaused(args.connection_id);
+        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
         // Get previous vars before stepping (for change detection)
         const previousVars = browserManager.getPreviousStepVars(args.connection_id);
         // Execute step command
@@ -354,7 +312,7 @@ export async function step(args) {
         return successResponse(response);
     }
     catch (error) {
-        return errorResponse(`Error stepping ${args.direction}: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -366,21 +324,14 @@ export async function step(args) {
 export async function execution(args) {
     const includeContext = args.include_context ?? true;
     try {
-        const cdpSession = browserManager.getCDPSession(args.connection_id);
-        if (!cdpSession) {
-            return errorResponse('Debugger not enabled. Call debugger_enable() first.');
-        }
+        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
         if (args.action === 'resume') {
-            if (!browserManager.isPaused(args.connection_id)) {
-                return errorResponse('Execution is not paused.');
-            }
+            browserManager.requirePaused(args.connection_id);
             await cdpSession.send('Debugger.resume');
             return successResponse('Execution resumed. Will pause at next breakpoint or debugger statement.');
         }
         else if (args.action === 'pause') {
-            if (browserManager.isPaused(args.connection_id)) {
-                return errorResponse('Execution is already paused.');
-            }
+            browserManager.requireNotPaused(args.connection_id);
             await cdpSession.send('Debugger.pause');
             // Wait a bit for debugger to pause
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -402,7 +353,7 @@ export async function execution(args) {
         }
     }
     catch (error) {
-        return errorResponse(`Error with execution ${args.action}: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**

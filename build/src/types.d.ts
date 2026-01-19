@@ -68,6 +68,18 @@ export interface Connection {
     consoleEnabled: boolean;
     /** Previous step variables for change tracking (P2) */
     previousStepVars?: Record<string, string>;
+    /** Navigation epoch - increments on each full navigation/reload */
+    navigationEpoch: number;
+    /** Timestamp of last navigation */
+    lastNavigationTime: number;
+    /** HMR update count since last navigation */
+    hmrUpdateCount: number;
+    /** Timestamp of last HMR update (null if none) */
+    lastHmrTime: number | null;
+    /** Timestamp of last get_console_logs call (null if never called) */
+    lastConsoleQuery: number | null;
+    /** Navigation epoch at last query (null if never queried) */
+    lastQueryEpoch: number | null;
 }
 /**
  * Connection status for listing
@@ -83,9 +95,10 @@ export interface ConnectionStatus {
  */
 export interface QueryElementsResult {
     found: number;
-    foundAfterDepthFilter: number;
-    filteredByDepth: number;
-    maxDepth: number;
+    afterVisibilityFilter?: number;
+    afterTextFilter?: number;
+    hiddenFiltered?: number;
+    textFiltered?: number;
     elements: ElementInfo[];
 }
 /**
@@ -99,7 +112,6 @@ export interface ElementInfo {
     id: string | null;
     classes: string[];
     visible: boolean;
-    depth: number;
     childInfo: ChildInfo | null;
     position: {
         x: number;
@@ -115,7 +127,7 @@ export interface ElementInfo {
     };
 }
 /**
- * Child element info for depth-limited elements
+ * Child element info for elements with children
  */
 export interface ChildInfo {
     directChildren: number;
@@ -160,5 +172,7 @@ export interface ConsoleMessage {
     url?: string;
     /** Line number if available */
     lineNumber?: number;
+    /** Navigation epoch when message was captured */
+    navigationEpoch: number;
 }
 //# sourceMappingURL=types.d.ts.map

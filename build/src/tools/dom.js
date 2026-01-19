@@ -3,54 +3,46 @@
  * Ported from Python query_elements, click_element, fill_element, navigate, get_console_logs
  */
 import { browserManager } from '../browser.js';
-import { MAX_DOM_DEPTH, HARD_MAX_DOM_DEPTH } from '../config.js';
 import { checkResultSize, successResponse, errorResponse, escapeForJs, } from '../response.js';
 import { gatherNavigateContext, gatherActionContext } from './context.js';
 /**
- * Get page for a connection, with error handling.
+ * Format time difference as human-readable string
  */
-function getPage(connectionId) {
-    const connection = browserManager.getConnection(connectionId);
-    if (!connection) {
-        const id = connectionId || 'active';
-        throw new Error(`No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`);
-    }
-    return connection.page;
+function formatTimeSince(timestamp) {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60)
+        return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60)
+        return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24)
+        return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
 }
 /**
  * Find elements by CSS selector and return their details.
  *
- * Automatically filters out deeply nested elements (depth > 3 from body) to prevent
- * returning the entire page when using broad selectors like "div" or "*".
- * This forces you to use specific selectors and keeps results compact.
+ * Returns up to 'limit' elements (default 5, max 20).
+ * Use specific selectors to narrow results when needed.
  */
 export async function queryElements(args) {
     const selector = args.selector;
-    const limit = args.limit ?? 20;
-    let maxDepth = args.max_depth ?? MAX_DOM_DEPTH;
-    // Enforce hard limit
-    if (maxDepth > HARD_MAX_DOM_DEPTH) {
-        maxDepth = HARD_MAX_DOM_DEPTH;
+    let limit = args.limit ?? 5;
+    // Enforce hard limit at 20
+    if (limit > 20) {
+        limit = 20;
     }
     try {
-        const page = getPage(args.connection_id);
+        const page = browserManager.getPageOrThrow(args.connection_id);
         const escapedSelector = escapeForJs(selector);
-        // JavaScript to execute in page context (ported from Python)
+        // Prepare text_contains value for injection
+        const textContainsValue = args.text_contains ? escapeForJs(args.text_contains) : null;
+        const includeHidden = args.include_hidden ?? false;
+        // JavaScript to execute in page context
         const script = `
       (() => {
-        const maxDepth = ${maxDepth};
-
-        // Calculate depth from body
-        function getDepth(el) {
-          let depth = 0;
-          let current = el;
-          while (current && current !== document.body) {
-            depth++;
-            current = current.parentElement;
-          }
-          return depth;
-        }
-
         // Count total descendants
         function countDescendants(el) {
           let count = 0;
@@ -64,34 +56,70 @@ export async function queryElements(args) {
           return count;
         }
 
+        // Check if element is visible
+        function isVisible(el) {
+          // Check offsetParent (null for hidden elements, except body/html)
+          if (el.offsetParent === null && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+            // Could still be visible if it's fixed/sticky positioned
+            const style = getComputedStyle(el);
+            if (style.position !== 'fixed' && style.position !== 'sticky') {
+              return false;
+            }
+          }
+
+          const style = getComputedStyle(el);
+          if (style.display === 'none') return false;
+          if (style.visibility === 'hidden') return false;
+
+          // Check for zero dimensions
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) return false;
+
+          return true;
+        }
+
         // Get all matching elements
-        const allElements = Array.from(document.querySelectorAll('${escapedSelector}'));
+        let elements = Array.from(document.querySelectorAll('${escapedSelector}'));
+        const totalMatched = elements.length;
 
-        // Filter by depth
-        const elementsWithDepth = allElements.map(el => ({
-          element: el,
-          depth: getDepth(el)
-        }));
+        // Apply visibility filter (unless include_hidden is true)
+        const includeHidden = ${includeHidden};
+        let hiddenCount = 0;
+        if (!includeHidden) {
+          const beforeFilter = elements.length;
+          elements = elements.filter(el => isVisible(el));
+          hiddenCount = beforeFilter - elements.length;
+        }
 
-        const filteredElements = elementsWithDepth.filter(item => item.depth <= maxDepth);
-        const filtered = allElements.length - filteredElements.length;
+        // Apply text filter
+        const textContains = ${textContainsValue ? `'${textContainsValue}'` : 'null'};
+        let textFilteredCount = 0;
+        if (textContains) {
+          const beforeFilter = elements.length;
+          const searchLower = textContains.toLowerCase();
+          elements = elements.filter(el => {
+            const text = el.textContent || '';
+            return text.toLowerCase().includes(searchLower);
+          });
+          textFilteredCount = beforeFilter - elements.length;
+        }
 
-        // Apply limit and extract data
+        // Apply limit
         const limit = ${limit};
-        const limitedElements = filteredElements.slice(0, limit);
+        const limitedElements = elements.slice(0, limit);
 
         return {
-          found: allElements.length,
-          foundAfterDepthFilter: filteredElements.length,
-          filteredByDepth: filtered,
-          maxDepth: maxDepth,
-          elements: limitedElements.map((item, idx) => {
-            const el = item.element;
+          found: totalMatched,
+          afterVisibilityFilter: includeHidden ? totalMatched : totalMatched - hiddenCount,
+          afterTextFilter: elements.length,
+          hiddenFiltered: hiddenCount,
+          textFiltered: textFilteredCount,
+          elements: limitedElements.map((el, idx) => {
             const rect = el.getBoundingClientRect();
 
-            // If this element is at max depth, count its children
+            // Show childInfo for ALL elements with children (not just at max depth)
             let childInfo = null;
-            if (item.depth === maxDepth && el.children.length > 0) {
+            if (el.children.length > 0) {
               childInfo = {
                 directChildren: el.children.length,
                 totalDescendants: countDescendants(el)
@@ -106,7 +134,6 @@ export async function queryElements(args) {
               id: el.id || null,
               classes: el.className ? el.className.split(' ').filter(c => c) : [],
               visible: el.offsetParent !== null,
-              depth: item.depth,
               childInfo: childInfo,
               position: {
                 x: Math.round(rect.x),
@@ -129,24 +156,29 @@ export async function queryElements(args) {
         if (data.found === 0) {
             return successResponse(`No elements found matching selector: ${selector}`);
         }
-        // Build output
+        // Build output with filter info
         const output = [];
-        const foundTotal = data.found;
-        const foundFiltered = data.foundAfterDepthFilter;
-        const filteredCount = data.filteredByDepth;
-        const maxDepthUsed = data.maxDepth;
-        if (filteredCount > 0) {
-            output.push(`Found ${foundTotal} element(s) matching '${selector}'`);
-            output.push(`Filtered out ${filteredCount} deeply nested element(s) (depth > ${maxDepthUsed})`);
-            output.push(`Showing first ${Math.min(foundFiltered, limit)} of ${foundFiltered} remaining:`);
+        const total = data.found;
+        const afterVisibility = data.afterVisibilityFilter ?? total;
+        const afterText = data.afterTextFilter ?? afterVisibility;
+        const shown = data.elements.length;
+        // Show filter summary if filters are active
+        if ((data.hiddenFiltered && data.hiddenFiltered > 0) || (data.textFiltered && data.textFiltered > 0)) {
+            output.push(`Found ${total} element(s) matching '${selector}'`);
+            if (data.hiddenFiltered && data.hiddenFiltered > 0) {
+                output.push(`  Visibility filter: ${data.hiddenFiltered} hidden element(s) excluded`);
+            }
+            if (data.textFiltered && data.textFiltered > 0) {
+                output.push(`  Text filter "${args.text_contains}": ${data.textFiltered} element(s) excluded`);
+            }
+            output.push(`Showing first ${shown} of ${afterText} remaining:`);
         }
         else {
-            output.push(`Found ${foundTotal} element(s) matching '${selector}' (showing first ${Math.min(foundTotal, limit)}):`);
+            output.push(`Found ${total} element(s) matching '${selector}' (showing first ${shown}):`);
         }
         output.push('');
         for (const el of data.elements) {
-            const depthInfo = el.depth !== undefined ? ` (depth: ${el.depth})` : '';
-            output.push(`[${el.index}] <${el.tag}>${depthInfo}`);
+            output.push(`[${el.index}] <${el.tag}>`);
             if (el.id) {
                 output.push(`    ID: #${el.id}`);
             }
@@ -170,19 +202,24 @@ export async function queryElements(args) {
                 output.push(`    Attributes: ${JSON.stringify(relevantAttrs)}`);
             }
             output.push(`    Visible: ${el.visible}`);
-            // Show inline elision message if this element has children that were filtered
+            // Show child info for elements with children
             if (el.childInfo) {
                 const direct = el.childInfo.directChildren;
-                const total = el.childInfo.totalDescendants;
-                output.push(`    [ELIDED ${direct} DIRECT CHILD ELEMENT${direct !== 1 ? 'S' : ''} (${total} element${total !== 1 ? 's' : ''} total). INCREASE SELECTOR SPECIFICITY]`);
+                const totalDesc = el.childInfo.totalDescendants;
+                output.push(`    Children: ${direct} direct, ${totalDesc} total`);
             }
+            output.push('');
+        }
+        // Add hint if results were truncated
+        if (afterText > shown) {
+            output.push(`[${afterText - shown} more element(s) not shown. Use a more specific selector to narrow results.]`);
             output.push('');
         }
         const result = output.join('\n');
         return successResponse(checkResultSize(result, undefined, 'query_elements', data));
     }
     catch (error) {
-        return errorResponse(`Error querying elements: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -196,7 +233,7 @@ export async function clickElement(args) {
     const index = args.index ?? 0;
     const includeContext = args.include_context ?? true;
     try {
-        const page = getPage(args.connection_id);
+        const page = browserManager.getPageOrThrow(args.connection_id);
         const escapedSelector = escapeForJs(selector);
         // JavaScript click with fallback (ported from Python)
         const script = `
@@ -236,7 +273,7 @@ export async function clickElement(args) {
         }
     }
     catch (error) {
-        return errorResponse(`Error clicking element: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -252,7 +289,7 @@ export async function fillElement(args) {
     const submit = args.submit ?? false;
     const includeContext = args.include_context ?? true;
     try {
-        const page = getPage(args.connection_id);
+        const page = browserManager.getPageOrThrow(args.connection_id);
         const escapedSelector = escapeForJs(selector);
         const escapedText = escapeForJs(text);
         // JavaScript fill with events (ported from Python)
@@ -305,7 +342,7 @@ export async function fillElement(args) {
         }
     }
     catch (error) {
-        return errorResponse(`Error filling element: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -315,7 +352,7 @@ export async function fillElement(args) {
 export async function navigate(args) {
     const includeContext = args.include_context ?? true;
     try {
-        const page = getPage(args.connection_id);
+        const page = browserManager.getPageOrThrow(args.connection_id);
         await page.goto(args.url, { waitUntil: 'networkidle2' });
         let response = `Navigated to ${args.url}`;
         // Add context if requested
@@ -328,7 +365,7 @@ export async function navigate(args) {
         return successResponse(response);
     }
     catch (error) {
-        return errorResponse(`Error navigating: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 /**
@@ -341,24 +378,47 @@ export async function getConsoleLogs(args) {
     const filterLevel = args.filter_level ?? 'all';
     const limit = args.limit ?? 3;
     try {
-        // Verify connection exists
-        const connection = browserManager.getConnection(args.connection_id);
-        if (!connection) {
-            const id = args.connection_id || 'active';
-            throw new Error(`No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`);
-        }
+        // Verify connection exists using throwing method
+        const connection = browserManager.getConnectionOrThrow(args.connection_id);
         // Get logs from browser manager
         const logs = browserManager.getConsoleLogs(args.connection_id);
         // Filter logs by level if specified
         const filteredLogs = filterLevel === 'all' ? logs : logs.filter(log => log.level === filterLevel);
+        // Build freshness header
+        const output = [];
+        output.push('--- PAGE STATE ---');
+        // Freshness delta vs last query
+        if (connection.lastQueryEpoch !== null && connection.lastConsoleQuery !== null) {
+            if (connection.lastQueryEpoch < connection.navigationEpoch) {
+                output.push('[PAGE RELOADED since your last query]');
+            }
+            else if (connection.hmrUpdateCount > 0 && connection.lastHmrTime !== null && connection.lastHmrTime > connection.lastConsoleQuery) {
+                output.push('[HMR UPDATE occurred since your last query]');
+            }
+            else {
+                output.push('[No changes since your last query]');
+            }
+        }
+        // Current page state
+        output.push(`Navigation epoch: ${connection.navigationEpoch}`);
+        output.push(`Last navigation: ${formatTimeSince(connection.lastNavigationTime)}`);
+        if (connection.hmrUpdateCount > 0 && connection.lastHmrTime !== null) {
+            output.push(`HMR updates since navigation: ${connection.hmrUpdateCount}`);
+            output.push(`Last HMR update: ${formatTimeSince(connection.lastHmrTime)}`);
+        }
+        output.push('');
+        // Update query tracking for next call
+        connection.lastConsoleQuery = Date.now();
+        connection.lastQueryEpoch = connection.navigationEpoch;
         if (filteredLogs.length === 0) {
-            return successResponse(`No console messages captured${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}.`);
+            output.push(`No console messages captured${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}.`);
+            return successResponse(output.join('\n'));
         }
         // Get most recent logs up to limit
         const recentLogs = filteredLogs.slice(-limit);
         const totalCount = filteredLogs.length;
-        const output = [];
-        output.push(`Console messages (showing ${recentLogs.length} of ${totalCount}${filterLevel !== 'all' ? `, filter: ${filterLevel}` : ''}):`);
+        output.push('--- CONSOLE MESSAGES ---');
+        output.push(`Showing ${recentLogs.length} of ${totalCount}${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}:`);
         output.push('');
         for (const log of recentLogs) {
             const timestamp = new Date(log.timestamp).toISOString().split('T')[1].slice(0, 12);
@@ -368,7 +428,7 @@ export async function getConsoleLogs(args) {
         return successResponse(output.join('\n'));
     }
     catch (error) {
-        return errorResponse(`Error getting console logs: ${error}`);
+        return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
 //# sourceMappingURL=dom.js.map

@@ -1,4 +1,4 @@
-# Sprint: depth-fix - Fix DOM Depth Filtering Logic
+# Sprint: depth-fix - Remove DOM Depth Filtering
 
 **Generated:** 2026-01-18
 **Confidence:** HIGH
@@ -6,100 +6,111 @@
 
 ## Sprint Goal
 
-Fix `query_elements` to never filter out elements that directly match the selector. Depth filtering should control child traversal depth, not filter matched elements.
+Remove DOM depth filtering from `query_elements`. Use `limit` parameter (default 5, max 20) for result size control instead of filtering by depth from body.
 
 ## Scope
 
 **Deliverables:**
-1. Fix depth filtering logic in `queryElements()` function
-2. Update tool descriptions to clarify depth semantics
-3. Verify fix works correctly
+1. Remove depth filtering logic from `queryElements()` function
+2. Change default limit from 20 to 5
+3. Update tool descriptions
+4. Update documentation
 
 ## Work Items
 
-### P0: Fix depth filtering in queryElements()
+### P0: Remove depth filtering and update limit defaults
 
-**File:** `src/tools/dom.ts` (lines 57-146)
+**File:** `src/tools/dom.ts`
 
 **Changes:**
 
-1. Remove filtering of matched elements by depth
-2. Change depth calculation to be relative to each matched element (for child traversal)
-3. Keep `depthFromBody` as optional informational field (backwards compatible)
-
-**Implementation:**
-
-```javascript
-// NEW: Never filter matched elements
-const allElements = Array.from(document.querySelectorAll(selector));
-const limitedElements = allElements.slice(0, limit);
-
-// For each element, calculate child info based on max_depth from THAT element
-return {
-  found: allElements.length,
-  elements: limitedElements.map((el, idx) => {
-    // Child info: traverse up to maxDepth levels deep from THIS element
-    const childInfo = el.children.length > 0 ? {
-      directChildren: el.children.length,
-      totalDescendants: countDescendants(el),
-      // Could add: descendantsWithinDepth for more detail
-    } : null;
-
-    return {
-      // ... existing fields
-      depthFromBody: getDepth(el),  // informational only
-      childInfo: childInfo
-    };
-  })
-};
-```
+1. Remove depth filtering logic entirely
+2. Change default limit from 20 to 5
+3. Keep the limit parameter (max 20)
+4. Remove `filteredByDepth`, `foundAfterDepthFilter`, `maxDepth` from return value
+5. Still show `childInfo` for ALL elements with children (not just at max depth)
+6. Keep `depthFromBody` as informational only (optional - can remove if not useful)
 
 **Acceptance Criteria:**
 - [ ] `query_elements("button")` returns buttons regardless of their depth from body
-- [ ] Elements at depth 20 from body are returned when they match selector
-- [ ] Child elision still works (shows child counts for elements with children)
-- [ ] No regression: simple queries still work correctly
+- [ ] Default limit is 5 elements
+- [ ] Maximum limit is 20 elements
+- [ ] No depth filtering occurs - all matched elements are candidates
+- [ ] `childInfo` shows for any element with children
+- [ ] Build passes: `npm run build`
 
-**Technical Notes:**
-- Remove `filteredByDepth` and `foundAfterDepthFilter` from return value (no longer filtering)
-- Keep `depthFromBody` in element data for informational purposes
-- Update the elision message logic - it should trigger based on having children, not hitting max depth
+### P1: Update tool definitions
 
-### P1: Update tool descriptions
-
-**File:** `src/index.ts` (tool definition for `query_elements`)
+**File:** `src/index.ts`
 
 **Changes:**
-- Update description to clarify that depth controls child traversal, not element filtering
-- Remove mention of "filters out deeply nested elements"
+- Update description: remove mention of depth filtering
+- Change limit default in schema from 20 to 5
+- Remove `max_depth` parameter entirely (or keep but document as no-op)
 
 **Acceptance Criteria:**
 - [ ] Tool description accurately describes new behavior
-- [ ] No mention of filtering matched elements by depth
+- [ ] Limit default is 5 in tool schema
+- [ ] `max_depth` parameter removed or deprecated
 
-### P2: Update output formatting
+### P2: Update type definitions
+
+**File:** `src/types.ts`
+
+**Changes:**
+- Remove `filteredByDepth`, `foundAfterDepthFilter`, `maxDepth` from `QueryElementsResult`
+- Keep or remove `depth` from element data (informational only)
+
+**Acceptance Criteria:**
+- [ ] Types match new return structure
+
+### P3: Update output formatting
 
 **File:** `src/tools/dom.ts` (lines 154-175)
 
 **Changes:**
-- Remove the "Filtered out N deeply nested elements" message
-- Simplify output header since we no longer filter by depth
+- Remove "Filtered out N deeply nested elements" message
+- Simplify output header
+- Add hint when results are truncated telling agent to use more specific selector
 
 **Acceptance Criteria:**
-- [ ] Output no longer mentions filtering by depth
-- [ ] Output shows accurate count of matched elements
+- [ ] Output no longer mentions depth filtering
+- [ ] Shows clean count: "Found N element(s), showing first M"
+- [ ] When truncated, shows: "[X more element(s) not shown. Use a more specific selector to narrow results.]"
 
-### P3: Update documentation
+### P4: Remove config constants
+
+**File:** `src/config.ts`
+
+**Changes:**
+- Remove `MAX_DOM_DEPTH` constant
+- Remove `HARD_MAX_DOM_DEPTH` constant
+
+**Acceptance Criteria:**
+- [ ] Unused depth constants removed
+
+### P5: Update documentation
 
 **Files:** `CLAUDE.md`, `README.md`
 
 **Changes:**
-- Update DOM depth filtering description to match new behavior
-- Clarify that max_depth controls child traversal depth
+- Remove DOM depth filtering documentation
+- Update to describe limit-based result control
+- Note default of 5, max of 20
 
 **Acceptance Criteria:**
-- [ ] Documentation accurately describes behavior
-- [ ] Examples show correct usage
+- [ ] Documentation accurately describes new behavior
+- [ ] No mention of depth filtering
+
+## Summary of Changes
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Default limit | 20 | 5 |
+| Max limit | unlimited | 20 |
+| Depth filtering | Yes (depth from body) | None |
+| `max_depth` param | Controls filtering | Removed |
+| `childInfo` shown | Only at max depth | For all elements with children |
 
 ## Dependencies
 
@@ -109,5 +120,5 @@ return {
 
 | Risk | Mitigation |
 |------|------------|
-| Output structure change breaks consumers | Changes are backwards-compatible; we add fields, not remove them |
-| Performance if many elements match | Already have `limit` parameter to control this |
+| Breaking change for agents using `max_depth` | Document as removed, parameter can be ignored if passed |
+| More elements returned for broad queries | Lower default limit (5) compensates |

@@ -1,0 +1,30 @@
+Agent: iterative-implementer | 2026-01-18 21:04:55
+Mode: manual
+Completed: text_contains & include_hidden filters | Files: 5 | Commits: 5
+Tests: 5 passing
+Cache invalidated: N/A (no eval cache existed)
+Status: complete
+
+Implementation Summary:
+- Added text_contains parameter for case-insensitive text filtering
+- Added include_hidden parameter for visibility control (default: false)
+- Filters applied before limit for correct result counts
+- Filter summary shown in output when filters are active
+- Both parameters work in legacy and smart tool modes
+- Documentation updated in CLAUDE.md and README.md
+
+Commits:
+1. 85f4102 - feat(query_elements): add filter tracking fields to QueryElementsResult type
+2. 14b3579 - feat(query_elements): implement text_contains and include_hidden filters
+3. 49c9a80 - feat(query_elements): add filter parameters to tool definitions
+4. b514e46 - docs: update CLAUDE.md with filter documentation
+5. abeb5f5 - docs: update README.md with filter parameters
+
+Files Modified:
+- src/types.ts (filter tracking fields)
+- src/tools/dom.ts (filter implementation)
+- src/index.ts (tool schemas)
+- CLAUDE.md (usage documentation)
+- README.md (user-facing docs)
+
+All acceptance criteria met. Ready for manual testing by user.

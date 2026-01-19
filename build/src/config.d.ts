@@ -10,21 +10,6 @@
  */
 export declare const MAX_RESULT_SIZE = 5000;
 /**
- * Maximum DOM depth for query_elements.
- * Elements nested deeper than this are filtered out to prevent returning
- * the entire page when querying broad selectors like "div".
- * Depth is measured from document.body.
- * Setting this low (3) forces agents to use specific selectors.
- * Agents can override with max_depth parameter up to HARD_MAX_DOM_DEPTH.
- */
-export declare const MAX_DOM_DEPTH = 3;
-/**
- * Hard limit for DOM depth.
- * Even if agent requests higher depth, this is the absolute maximum.
- * Prevents returning massive amounts of irrelevant data.
- */
-export declare const HARD_MAX_DOM_DEPTH = 10;
-/**
  * Enable debug logging to stderr.
  */
 export declare const DEBUG: boolean;

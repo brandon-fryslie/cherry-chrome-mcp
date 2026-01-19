@@ -11,6 +11,7 @@ import { tmpdir } from 'os';
 import { mkdtempSync } from 'fs';
 import { join } from 'path';
 import { DEBUG, CHROME_LAUNCH_WAIT } from './config.js';
+import { ChromeNotConnectedError, DebuggerNotEnabledError, ExecutionNotPausedError, ExecutionAlreadyPausedError, } from './errors.js';
 /**
  * Log debug messages to stderr
  */
@@ -47,12 +48,59 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 /**
+ * Check if console message is from HMR framework
+ */
+function isHmrMessage(text) {
+    return /^\[(HMR|WDS|vite)\]/.test(text);
+}
+/**
+ * Check if HMR message indicates a module update
+ */
+function isHmrUpdateMessage(text) {
+    return isHmrMessage(text) && /updat(e|ed|ing)/i.test(text);
+}
+/**
  * Browser Manager - handles multiple Chrome connections
  * Ported from Python CDPConnectionManager
  */
 export class BrowserManager {
     connections = new Map();
     activeConnectionId = null;
+    /**
+     * Setup console capture and navigation tracking for a page
+     */
+    setupPageListeners(connection, page) {
+        // Clear any existing listeners to prevent duplicates
+        page.removeAllListeners('console');
+        page.removeAllListeners('load');
+        // Enable console capture with HMR detection
+        page.on('console', (msg) => {
+            const text = msg.text();
+            const isHmr = isHmrMessage(text);
+            // Track HMR updates
+            if (isHmrUpdateMessage(text)) {
+                connection.hmrUpdateCount++;
+                connection.lastHmrTime = Date.now();
+                debug(`HMR update detected (count: ${connection.hmrUpdateCount}): ${text}`);
+            }
+            connection.consoleLogs.push({
+                level: msg.type(),
+                text: text,
+                timestamp: Date.now(),
+                navigationEpoch: connection.navigationEpoch,
+            });
+        });
+        // Track page navigations/reloads
+        page.on('load', () => {
+            connection.navigationEpoch++;
+            connection.lastNavigationTime = Date.now();
+            connection.hmrUpdateCount = 0;
+            connection.lastHmrTime = null;
+            // Clear pre-navigation messages
+            connection.consoleLogs = [];
+            debug(`Navigation detected (epoch: ${connection.navigationEpoch})`);
+        });
+    }
     /**
      * Connect to an existing Chrome instance running with remote debugging.
      *
@@ -92,17 +140,9 @@ export class BrowserManager {
             }
             const page = pages[0];
             info(`Using page: ${page.url()}`);
-            // Enable console capture
-            const consoleLogs = [];
-            page.on('console', (msg) => {
-                consoleLogs.push({
-                    level: msg.type(),
-                    text: msg.text(),
-                    timestamp: Date.now(),
-                });
-            });
-            // Store connection
-            this.connections.set(connectionId, {
+            // Initialize connection
+            const now = Date.now();
+            const connection = {
                 browser,
                 page,
                 cdpSession: null,
@@ -110,9 +150,19 @@ export class BrowserManager {
                 pausedData: null,
                 breakpoints: new Map(),
                 debuggerEnabled: false,
-                consoleLogs,
+                consoleLogs: [],
                 consoleEnabled: true,
-            });
+                navigationEpoch: 0,
+                lastNavigationTime: now,
+                hmrUpdateCount: 0,
+                lastHmrTime: null,
+                lastConsoleQuery: null,
+                lastQueryEpoch: null,
+            };
+            // Setup console capture and navigation tracking
+            this.setupPageListeners(connection, page);
+            // Store connection
+            this.connections.set(connectionId, connection);
             // Set as active if first connection
             if (!this.activeConnectionId) {
                 this.activeConnectionId = connectionId;
@@ -287,15 +337,14 @@ export class BrowserManager {
         }
         // Update the page reference
         connection.page = page;
-        // Re-setup console capture on new page
+        // Increment navigation epoch and reset state
+        connection.navigationEpoch++;
+        connection.lastNavigationTime = Date.now();
+        connection.hmrUpdateCount = 0;
+        connection.lastHmrTime = null;
         connection.consoleLogs = [];
-        page.on('console', (msg) => {
-            connection.consoleLogs.push({
-                level: msg.type(),
-                text: msg.text(),
-                timestamp: Date.now(),
-            });
-        });
+        // Re-setup console capture and navigation tracking on new page
+        this.setupPageListeners(connection, page);
         // If debugger was enabled, need to recreate CDP session for new page
         if (connection.debuggerEnabled) {
             const newClient = await page.createCDPSession();
@@ -312,6 +361,7 @@ export class BrowserManager {
             // Re-enable debugger
             await newClient.send('Debugger.enable');
         }
+        debug(`Switched to new page (epoch: ${connection.navigationEpoch})`);
     }
     /**
      * Enable debugger for a connection and set up CDP session.
@@ -401,6 +451,81 @@ export class BrowserManager {
     getPage(connectionId) {
         const connection = this.getConnection(connectionId);
         return connection?.page || null;
+    }
+    /**
+     * SINGLE ENFORCER: Get connection or throw with clear error message.
+     * All tools that need a connection should call this.
+     *
+     * @param connectionId - Optional connection ID
+     * @returns Connection (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     */
+    getConnectionOrThrow(connectionId) {
+        const connection = this.getConnection(connectionId);
+        if (!connection) {
+            throw new ChromeNotConnectedError(connectionId);
+        }
+        return connection;
+    }
+    /**
+     * Get page or throw with clear error message.
+     * Uses getConnectionOrThrow internally.
+     *
+     * @param connectionId - Optional connection ID
+     * @returns Page (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     */
+    getPageOrThrow(connectionId) {
+        const connection = this.getConnectionOrThrow(connectionId);
+        return connection.page;
+    }
+    /**
+     * Get CDP session or throw with DIFFERENTIATED error messages.
+     * Distinguishes between "no connection" vs "debugger not enabled".
+     *
+     * @param connectionId - Optional connection ID
+     * @returns CDP session (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     * @throws {DebuggerNotEnabledError} If debugger not enabled
+     */
+    getCDPSessionOrThrow(connectionId) {
+        const connection = this.getConnectionOrThrow(connectionId); // Throws if no connection
+        if (!connection.cdpSession || !connection.debuggerEnabled) {
+            throw new DebuggerNotEnabledError(connectionId);
+        }
+        return connection.cdpSession;
+    }
+    /**
+     * Verify execution is paused or throw.
+     *
+     * @param connectionId - Optional connection ID
+     * @returns Paused data (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     * @throws {DebuggerNotEnabledError} If debugger not enabled
+     * @throws {ExecutionNotPausedError} If not paused
+     */
+    requirePaused(connectionId) {
+        this.getCDPSessionOrThrow(connectionId); // Ensures debugger is enabled first
+        const pausedData = this.getPausedData(connectionId);
+        if (!pausedData) {
+            throw new ExecutionNotPausedError();
+        }
+        return pausedData;
+    }
+    /**
+     * Verify execution is NOT paused or throw.
+     *
+     * @param connectionId - Optional connection ID
+     * @throws {ChromeNotConnectedError} If no connection exists
+     * @throws {DebuggerNotEnabledError} If debugger not enabled
+     * @throws {ExecutionAlreadyPausedError} If already paused
+     */
+    requireNotPaused(connectionId) {
+        this.getCDPSessionOrThrow(connectionId); // Ensures debugger is enabled first
+        const pausedData = this.getPausedData(connectionId);
+        if (pausedData) {
+            throw new ExecutionAlreadyPausedError();
+        }
     }
     /**
      * Set breakpoint for tracking.

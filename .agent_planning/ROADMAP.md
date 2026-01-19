@@ -1,6 +1,6 @@
 # Cherry Chrome MCP Roadmap
 
-Last updated: 2025-01-12
+Last updated: 2026-01-18
 
 ## Phase 1: Usability Improvements [ACTIVE]
 
@@ -67,7 +67,77 @@ Goal: Make debugging web apps easier and more reliable for AI agents
 
 ---
 
-## Phase 2: Advanced Debugging [QUEUED]
+## Phase 2: Agent Effectiveness [ACTIVE]
+
+Goal: Reduce wasted agent turns through better feedback and guidance
+
+### Topics
+
+#### smart-element-suggestions [PLANNED]
+
+**Description**: When `query_elements` returns 0 results, analyze the page and suggest alternative selectors.
+
+**Output example**:
+```
+No elements found matching selector: .login-btn
+
+Similar selectors that exist:
+  - .login-button (3 elements) - class contains "login"
+  - #loginBtn (1 element) - ID contains "login"
+
+Page structure: 12 buttons, 5 inputs, 8 links
+```
+
+**Pain point**: Agents waste turns guessing at selectors with no guidance.
+
+**Directory**: `.agent_planning/smart-element-suggestions/`
+
+---
+
+#### page-state-diffing [PLANNED]
+
+**Description**: Track DOM changes after actions (click, fill, navigate). Show what was added/removed/changed.
+
+**Output example**:
+```
+--- DOM Changes ---
+Added: .success-toast, .confirmation-modal
+Removed: .loading-spinner
+Changed: #status text "Pending" → "Complete"
+```
+
+**Pain point**: Agents can't see what changed after an action without manual re-querying.
+
+**Directory**: `.agent_planning/page-state-diffing/`
+
+---
+
+#### selector-builder [PROPOSED]
+
+**Description**: Interactive element discovery using natural language and spatial hints.
+
+**Tool signature**:
+```typescript
+inspect_element({
+  description: "the login button",      // Natural language
+  near: { selector: "#header" },        // Spatial hints
+  contains_text: "Sign In"              // Content hints
+})
+```
+
+**Returns**: Best selector for the described element, using multiple strategies:
+- Text content matching
+- Position/layout analysis
+- Attribute analysis (data-testid, aria-label, etc.)
+- Suggests most stable selector (ID > unique class > nth-child)
+
+**Pain point**: Agents guess at selectors when they could describe what they're looking for.
+
+**Directory**: `.agent_planning/selector-builder/`
+
+---
+
+## Phase 3: Advanced Debugging [QUEUED]
 
 Goal: Deep debugging capabilities for complex web apps
 

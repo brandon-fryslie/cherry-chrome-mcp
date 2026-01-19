@@ -94,6 +94,126 @@ export async function queryElements(args: {
           return true;
         }
 
+        // Get opening tag only (no children)
+        function getOpeningTag(el) {
+          const tag = el.tagName.toLowerCase();
+          let attrs = '';
+          for (const attr of el.attributes) {
+            attrs += ' ' + attr.name + '="' + attr.value + '"';
+          }
+          const html = '<' + tag + attrs + '>';
+          return html.length > 200 ? html.substring(0, 197) + '...' : html;
+        }
+
+        // Get element signature for structure grouping
+        function getSignature(el) {
+          const tag = el.tagName.toLowerCase();
+          const id = el.id ? '#' + el.id : '';
+          const cls = el.className && typeof el.className === 'string'
+            ? '.' + el.className.split(' ').filter(c => c).slice(0, 2).join('.')
+            : '';
+          return tag + id + cls;
+        }
+
+        // Generate CSS-like structure skeleton
+        function getStructure(el, depth, maxDepth) {
+          if (depth === undefined) depth = 0;
+          if (maxDepth === undefined) maxDepth = 2;
+
+          if (depth >= maxDepth || el.children.length === 0) {
+            return null;
+          }
+
+          // Group children by signature (tag + classes)
+          const groups = [];
+          let currentGroup = null;
+
+          for (const child of el.children) {
+            const sig = getSignature(child);
+
+            if (currentGroup && currentGroup.sig === sig) {
+              currentGroup.count++;
+            } else {
+              if (currentGroup) groups.push(currentGroup);
+              currentGroup = { sig: sig, count: 1, sample: child };
+            }
+          }
+          if (currentGroup) groups.push(currentGroup);
+
+          // Build structure string
+          const parts = groups.map(function(g) {
+            const base = g.sig;
+            const multiplier = g.count > 1 ? '*' + g.count : '';
+            const nested = getStructure(g.sample, depth + 1, maxDepth);
+
+            if (nested) {
+              return g.count > 1
+                ? '(' + base + ' > ' + nested + ')' + multiplier
+                : base + ' > ' + nested;
+            }
+            return base + multiplier;
+          });
+
+          const result = parts.join(' + ');
+          // Cap at ~100 chars
+          return result.length > 100 ? result.substring(0, 97) + '...' : result;
+        }
+
+        // Get shortest selector for an element
+        function getSelector(el) {
+          if (el.id) return '#' + el.id;
+
+          const testId = el.getAttribute('data-testid');
+          if (testId) return '[data-testid="' + testId + '"]';
+
+          const tag = el.tagName.toLowerCase();
+          const cls = el.className && typeof el.className === 'string'
+            ? '.' + el.className.split(' ').filter(c => c)[0]
+            : '';
+          return tag + cls;
+        }
+
+        // Find interactive descendants
+        function getInteractive(el, limit) {
+          if (limit === undefined) limit = 6;
+
+          const interactive = [];
+          const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
+          const interactiveRoles = ['button', 'link', 'checkbox', 'radio', 'textbox', 'menuitem'];
+
+          function walk(node) {
+            if (interactive.length >= limit + 5) return; // Get a few extra to count
+
+            const tag = node.tagName ? node.tagName.toLowerCase() : null;
+            const role = node.getAttribute ? node.getAttribute('role') : null;
+            const hasHandler = node.onclick || (node.hasAttribute && node.hasAttribute('onclick'));
+
+            const isInteractive =
+              (tag && interactiveTags.indexOf(tag) !== -1) ||
+              (role && interactiveRoles.indexOf(role) !== -1) ||
+              hasHandler;
+
+            if (isInteractive && node !== el) {
+              interactive.push(getSelector(node));
+            }
+
+            if (node.children) {
+              for (const child of node.children) {
+                walk(child);
+              }
+            }
+          }
+
+          walk(el);
+
+          if (interactive.length > limit) {
+            const shown = interactive.slice(0, limit);
+            const more = interactive.length - limit;
+            return { items: shown, more: more };
+          }
+          return { items: interactive, more: 0 };
+        }
+
         // Get all matching elements
         let elements = Array.from(document.querySelectorAll('${escapedSelector}'));
         const totalMatched = elements.length;
@@ -148,7 +268,7 @@ export async function queryElements(args: {
               tag: el.tagName.toLowerCase(),
               text: el.textContent ? el.textContent.trim().substring(0, 100) : '',
               id: el.id || null,
-              classes: el.className ? el.className.split(' ').filter(c => c) : [],
+              classes: el.className && typeof el.className === 'string' ? el.className.split(' ').filter(c => c) : [],
               visible: el.offsetParent !== null,
               childInfo: childInfo,
               position: {
@@ -162,7 +282,10 @@ export async function queryElements(args: {
                 name: el.name || null,
                 placeholder: el.placeholder || null,
                 value: el.value !== undefined ? String(el.value).substring(0, 100) : null
-              }
+              },
+              html: getOpeningTag(el),
+              structure: el.children.length > 0 ? getStructure(el) : null,
+              interactive: el.children.length > 0 ? getInteractive(el) : { items: [], more: 0 }
             };
           })
         };
@@ -212,6 +335,25 @@ export async function queryElements(args: {
       }
       if (el.text) {
         output.push(`    Text: ${el.text}`);
+      }
+
+      // HTML snippet (always shown)
+      if (el.html) {
+        output.push(`    HTML: ${el.html}`);
+      }
+
+      // Structure skeleton (if has children)
+      if (el.structure) {
+        output.push(`    Structure: ${el.structure}`);
+      }
+
+      // Interactive elements list (if has interactive children)
+      if (el.interactive && el.interactive.items.length > 0) {
+        let interactiveLine = `    Interactive: ${el.interactive.items.join(', ')}`;
+        if (el.interactive.more > 0) {
+          interactiveLine += ` +${el.interactive.more} more`;
+        }
+        output.push(interactiveLine);
       }
 
       const attrs = el.attributes;

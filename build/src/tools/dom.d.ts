@@ -5,14 +5,14 @@
 /**
  * Find elements by CSS selector and return their details.
  *
- * Automatically filters out deeply nested elements (depth > 3 from body) to prevent
- * returning the entire page when using broad selectors like "div" or "*".
- * This forces you to use specific selectors and keeps results compact.
+ * Returns up to 'limit' elements (default 5, max 20).
+ * Use specific selectors to narrow results when needed.
  */
 export declare function queryElements(args: {
     selector: string;
     limit?: number;
-    max_depth?: number;
+    text_contains?: string;
+    include_hidden?: boolean;
     connection_id?: string;
 }): Promise<{
     content: Array<{

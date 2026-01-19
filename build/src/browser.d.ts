@@ -15,6 +15,10 @@ export declare class BrowserManager {
     private connections;
     private activeConnectionId;
     /**
+     * Setup console capture and navigation tracking for a page
+     */
+    private setupPageListeners;
+    /**
      * Connect to an existing Chrome instance running with remote debugging.
      *
      * @param connectionId - Unique identifier for this connection
@@ -113,6 +117,53 @@ export declare class BrowserManager {
      * @returns Page or null if not found
      */
     getPage(connectionId?: string): Page | null;
+    /**
+     * SINGLE ENFORCER: Get connection or throw with clear error message.
+     * All tools that need a connection should call this.
+     *
+     * @param connectionId - Optional connection ID
+     * @returns Connection (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     */
+    getConnectionOrThrow(connectionId?: string): Connection;
+    /**
+     * Get page or throw with clear error message.
+     * Uses getConnectionOrThrow internally.
+     *
+     * @param connectionId - Optional connection ID
+     * @returns Page (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     */
+    getPageOrThrow(connectionId?: string): Page;
+    /**
+     * Get CDP session or throw with DIFFERENTIATED error messages.
+     * Distinguishes between "no connection" vs "debugger not enabled".
+     *
+     * @param connectionId - Optional connection ID
+     * @returns CDP session (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     * @throws {DebuggerNotEnabledError} If debugger not enabled
+     */
+    getCDPSessionOrThrow(connectionId?: string): CDPSession;
+    /**
+     * Verify execution is paused or throw.
+     *
+     * @param connectionId - Optional connection ID
+     * @returns Paused data (never null)
+     * @throws {ChromeNotConnectedError} If no connection exists
+     * @throws {DebuggerNotEnabledError} If debugger not enabled
+     * @throws {ExecutionNotPausedError} If not paused
+     */
+    requirePaused(connectionId?: string): DebuggerPausedEvent;
+    /**
+     * Verify execution is NOT paused or throw.
+     *
+     * @param connectionId - Optional connection ID
+     * @throws {ChromeNotConnectedError} If no connection exists
+     * @throws {DebuggerNotEnabledError} If debugger not enabled
+     * @throws {ExecutionAlreadyPausedError} If already paused
+     */
+    requireNotPaused(connectionId?: string): void;
     /**
      * Set breakpoint for tracking.
      *

@@ -157,7 +157,7 @@ const legacyTools = [
     // DOM Tools
     {
         name: 'query_elements',
-        description: 'Find elements by CSS selector with DOM depth filtering. Returns tag, text, id, classes, visibility. Filters out deeply nested elements (default depth 3) to prevent returning entire page.',
+        description: 'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).',
         inputSchema: {
             type: 'object',
             properties: {
@@ -168,12 +168,16 @@ const legacyTools = [
                 limit: {
                     type: 'number',
                     description: 'Maximum number of elements to return',
-                    default: 20,
+                    default: 5,
                 },
-                max_depth: {
-                    type: 'number',
-                    description: 'Maximum DOM depth from body (default: 3, max: 10)',
-                    default: 3,
+                text_contains: {
+                    type: 'string',
+                    description: 'Filter to elements containing this text (case-insensitive partial match)',
+                },
+                include_hidden: {
+                    type: 'boolean',
+                    description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
+                    default: false,
                 },
                 connection_id: {
                     type: 'string',
@@ -595,7 +599,7 @@ const smartTools = [
     // DOM Tools (same as legacy)
     {
         name: 'query_elements',
-        description: 'Find elements by CSS selector with DOM depth filtering. Returns tag, text, id, classes, visibility. Filters out deeply nested elements (default depth 3) to prevent returning entire page.',
+        description: 'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).',
         inputSchema: {
             type: 'object',
             properties: {
@@ -606,12 +610,16 @@ const smartTools = [
                 limit: {
                     type: 'number',
                     description: 'Maximum number of elements to return',
-                    default: 20,
+                    default: 5,
                 },
-                max_depth: {
-                    type: 'number',
-                    description: 'Maximum DOM depth from body (default: 3, max: 10)',
-                    default: 3,
+                text_contains: {
+                    type: 'string',
+                    description: 'Filter to elements containing this text (case-insensitive partial match)',
+                },
+                include_hidden: {
+                    type: 'boolean',
+                    description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
+                    default: false,
                 },
                 connection_id: {
                     type: 'string',
