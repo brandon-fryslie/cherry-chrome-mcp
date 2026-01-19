@@ -535,13 +535,15 @@ export async function gatherNavigateContext(page: Page): Promise<string> {
  * Gather context after a DOM action (click, fill)
  *
  * Returns formatted context including:
- * - Triggered console logs (last 3)
  * - Element state after action
+ * - DOM diff (if beforeSnapshot provided)
  */
 export async function gatherActionContext(
   page: Page,
   selector: string,
-  action: 'click' | 'fill'
+  action: 'click' | 'fill',
+  beforeSnapshot?: DOMSnapshot | null,
+  connectionId?: string
 ): Promise<string> {
   const lines: string[] = [''];
 
@@ -569,14 +571,28 @@ export async function gatherActionContext(
     } | null;
 
     if (elementState) {
-      lines.push('Element State:');
-      lines.push(`  Tag: ${elementState.tag}`);
-      lines.push(`  Visible: ${elementState.visible}`);
+      lines.push('--- Element State ---');
+      lines.push(`Tag: ${elementState.tag}`);
+      lines.push(`Visible: ${elementState.visible}`);
       if (elementState.disabled !== undefined) {
-        lines.push(`  Disabled: ${elementState.disabled}`);
+        lines.push(`Disabled: ${elementState.disabled}`);
       }
       if (elementState.value !== null) {
-        lines.push(`  Value: ${truncateValue(elementState.value)}`);
+        lines.push(`Value: ${truncateValue(elementState.value)}`);
+      }
+    }
+
+    // Add DOM diff if we have a before snapshot
+    if (beforeSnapshot) {
+      const afterSnapshot = await captureDOMSnapshot(page);
+      const diff = computeDOMDiff(beforeSnapshot, afterSnapshot);
+      lines.push('');
+      lines.push(formatDOMDiff(diff));
+
+      // Store snapshot in connection for next action
+      const connection = browserManager.getConnection(connectionId);
+      if (connection) {
+        connection.lastDOMSnapshot = afterSnapshot;
       }
     }
 
