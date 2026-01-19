@@ -8,7 +8,7 @@ Cherry Chrome MCP is a TypeScript MCP server for Chrome automation with CSS sele
 
 **Key Features:**
 - CSS selector-based DOM queries (not accessibility tree refs)
-- DOM depth filtering (prevents returning entire pages)
+- Result limit controls (default 5 elements, max 20)
 - Multi-instance Chrome connection support
 - Full JavaScript debugger via CDP (breakpoints, stepping, evaluation)
 - Smart result size analysis (rejects oversized results with suggestions)
@@ -81,8 +81,6 @@ src/
 
 **Configuration (`src/config.ts`)**
 - `MAX_RESULT_SIZE = 5000` - Result size limit (~1250 tokens)
-- `MAX_DOM_DEPTH = 3` - Default DOM depth filter
-- `HARD_MAX_DOM_DEPTH = 10` - Maximum allowed depth
 - `USE_LEGACY_TOOLS` - Feature toggle (default: `false`, smart tools enabled)
 
 ### Tool Categories
@@ -99,24 +97,25 @@ src/
 
 ## Implementation Patterns
 
-### DOM Depth Filtering
+### Query Elements with Limit Control
 
-The `query_elements` tool filters out deeply nested elements using JavaScript executed in the page:
+The `query_elements` tool returns up to a specified limit (default 5, max 20):
 
 ```typescript
-// Depth is measured from document.body
-function getDepth(el: Element): number {
-  let depth = 0;
-  let current = el;
-  while (current && current !== document.body) {
-    depth++;
-    current = current.parentElement;
-  }
-  return depth;
-}
+// Returns first 5 elements matching selector by default
+const result = await queryElements({ selector: 'button' });
+
+// Can specify higher limit (up to 20)
+const result = await queryElements({ selector: 'div', limit: 10 });
+
+// Elements with children show child count info
+// [ELIDED N DIRECT CHILD ELEMENTS (M total). INCREASE SELECTOR SPECIFICITY]
 ```
 
-Elements at max depth show: `[ELIDED N DIRECT CHILD ELEMENTS (M total). INCREASE SELECTOR SPECIFICITY]`
+When results exceed the limit, a hint is shown:
+```
+[15 more element(s) not shown. Use a more specific selector to narrow results.]
+```
 
 ### CDP Debugger Access
 
@@ -196,7 +195,6 @@ Official Chrome DevTools MCP server - use for:
 ### `references/chrome-debugger-mcp/`
 Original Python implementation - use for:
 - Tool behavior and signatures
-- DOM depth filtering logic
 - Multi-instance connection management
 
 ## Testing

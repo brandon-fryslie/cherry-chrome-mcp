@@ -8,7 +8,7 @@ CSS selector-based Chrome DevTools MCP server with full JavaScript debugger supp
 - **Compact Results**: Returns only what you query, not entire page snapshots
 - **Multi-Instance Support**: Connect to multiple Chrome instances simultaneously
 - **Full Debugger**: Breakpoints, stepping, call stack inspection, expression evaluation
-- **DOM Depth Filtering**: Prevents returning the entire page on broad selectors
+- **Result Limit Controls**: Default 5 elements, max 20 per query to keep responses focused
 - **Smart Tools Mode**: NEW! Consolidated action-based tools with dynamic visibility and auto-bundled context
 - **Built on Puppeteer**: Same battle-tested foundation as official Chrome DevTools MCP
 - **TypeScript**: Type-safe, ported from Python chrome-debugger-mcp
@@ -124,7 +124,7 @@ All smart tools support `include_context: false` to disable auto-bundling if nee
 - `switch_target(connection_id, index, title, url)` - Switch to different page
 
 #### DOM Interaction (5 tools)
-- `query_elements(selector, limit, max_depth)` - Find elements by CSS selector with depth filtering
+- `query_elements(selector, limit)` - Find elements by CSS selector (default: 5 results, max: 20)
 - `click_element(selector, index)` - Click an element
 - `fill_element(selector, text, index, submit)` - Fill form inputs
 - `navigate(url)` - Navigate to URL
@@ -157,7 +157,7 @@ All smart tools support `include_context: false` to disable auto-bundling if nee
 - `show_tools(all, tools)` - Restore hidden tools
 
 #### DOM Interaction (5 tools)
-- `query_elements(selector, ...)` - Find elements (same as legacy)
+- `query_elements(selector, limit)` - Find elements (default: 5, max: 20)
 - `click_element(selector, include_context)` - Click with optional context
 - `fill_element(selector, text, include_context)` - Fill with optional context
 - `navigate(url, include_context)` - Navigate with optional context
@@ -174,7 +174,7 @@ All smart tools support `include_context: false` to disable auto-bundling if nee
 ## Key Differences from Standard Chrome DevTools MCP
 
 1. **CSS Selector-First**: Uses CSS selectors instead of accessibility tree refs
-2. **DOM Depth Filtering**: Filters out deeply nested elements (default depth 3)
+2. **Focused Result Limits**: Default 5 elements (max 20) to keep responses compact
 3. **Compact Results**: Returns only queried data, not entire page snapshots
 4. **Multi-Instance**: Connect to multiple Chrome/Electron instances simultaneously
 5. **Full Debugger**: Complete JavaScript debugger integration via CDP
@@ -195,8 +195,6 @@ Uses Puppeteer for browser automation and direct CDP (Chrome DevTools Protocol) 
 
 Configuration constants in `src/config.ts`:
 - `MAX_RESULT_SIZE = 5000` - Maximum result size in characters (~1250 tokens)
-- `MAX_DOM_DEPTH = 3` - Default DOM depth filter
-- `HARD_MAX_DOM_DEPTH = 10` - Maximum allowed DOM depth
 - `USE_SMART_TOOLS = process.env.USE_SMART_TOOLS === 'true'` - Enable smart tools mode
 
 ## Documentation
