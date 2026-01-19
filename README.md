@@ -5,6 +5,7 @@ CSS selector-based Chrome DevTools MCP server with full JavaScript debugger supp
 ## Features
 
 - **CSS Selector-based**: Query and interact using familiar CSS selectors
+- **Powerful Filtering**: Text content and visibility filters for precise element selection
 - **Compact Results**: Returns only what you query, not entire page snapshots
 - **Multi-Instance Support**: Connect to multiple Chrome instances simultaneously
 - **Full Debugger**: Breakpoints, stepping, call stack inspection, expression evaluation
@@ -124,7 +125,11 @@ All smart tools support `include_context: false` to disable auto-bundling if nee
 - `switch_target(connection_id, index, title, url)` - Switch to different page
 
 #### DOM Interaction (5 tools)
-- `query_elements(selector, limit)` - Find elements by CSS selector (default: 5 results, max: 20)
+- `query_elements(selector, limit, text_contains, include_hidden)` - Find elements by CSS selector
+  - **selector**: CSS selector to query
+  - **limit**: Max results (default: 5, max: 20)
+  - **text_contains**: Filter by text content (case-insensitive partial match)
+  - **include_hidden**: Include hidden elements (default: false)
 - `click_element(selector, index)` - Click an element
 - `fill_element(selector, text, index, submit)` - Fill form inputs
 - `navigate(url)` - Navigate to URL
@@ -157,7 +162,11 @@ All smart tools support `include_context: false` to disable auto-bundling if nee
 - `show_tools(all, tools)` - Restore hidden tools
 
 #### DOM Interaction (5 tools)
-- `query_elements(selector, limit)` - Find elements (default: 5, max: 20)
+- `query_elements(selector, limit, text_contains, include_hidden)` - Find elements
+  - **selector**: CSS selector to query
+  - **limit**: Max results (default: 5, max: 20)
+  - **text_contains**: Filter by text content (case-insensitive partial match)
+  - **include_hidden**: Include hidden elements (default: false)
 - `click_element(selector, include_context)` - Click with optional context
 - `fill_element(selector, text, include_context)` - Fill with optional context
 - `navigate(url, include_context)` - Navigate with optional context
@@ -171,15 +180,62 @@ All smart tools support `include_context: false` to disable auto-bundling if nee
 - `evaluate(call_frame_id, expression)` - Evaluate expression
 - `pause_on_exceptions(state)` - Configure exception pausing
 
+## Query Elements Filtering
+
+The `query_elements` tool supports powerful filtering to find exactly the elements you need:
+
+**Text Content Filtering:**
+```javascript
+// Find only buttons with "Submit" text (case-insensitive)
+query_elements({ selector: "button", text_contains: "Submit" })
+
+// Partial matches work
+query_elements({ selector: "button", text_contains: "Sub" })  // matches "Submit"
+```
+
+**Visibility Filtering:**
+```javascript
+// Default: only visible elements (display:none, visibility:hidden, zero size excluded)
+query_elements({ selector: "div" })
+
+// Include hidden elements
+query_elements({ selector: "div", include_hidden: true })
+```
+
+**Combined Filtering:**
+```javascript
+// Only visible buttons with "Login" text
+query_elements({
+  selector: "button",
+  text_contains: "Login",
+  include_hidden: false  // default, can be omitted
+})
+```
+
+**Filter Order:**
+1. CSS selector match
+2. Visibility filter (unless `include_hidden: true`)
+3. Text filter (if `text_contains` provided)
+4. Limit applied
+
+When filters are active, output shows helpful summary:
+```
+Found 50 element(s) matching 'button'
+  Visibility filter: 10 hidden element(s) excluded
+  Text filter "Submit": 35 element(s) excluded
+Showing first 5 of 5 remaining:
+```
+
 ## Key Differences from Standard Chrome DevTools MCP
 
 1. **CSS Selector-First**: Uses CSS selectors instead of accessibility tree refs
 2. **Focused Result Limits**: Default 5 elements (max 20) to keep responses compact
-3. **Compact Results**: Returns only queried data, not entire page snapshots
-4. **Multi-Instance**: Connect to multiple Chrome/Electron instances simultaneously
-5. **Full Debugger**: Complete JavaScript debugger integration via CDP
-6. **Result Size Analysis**: Rejects oversized results with smart suggestions instead of truncating
-7. **Smart Tools Mode**: Optional consolidated tools with dynamic visibility and auto-context
+3. **Powerful Filtering**: Text content and visibility filters for precise element selection
+4. **Compact Results**: Returns only queried data, not entire page snapshots
+5. **Multi-Instance**: Connect to multiple Chrome/Electron instances simultaneously
+6. **Full Debugger**: Complete JavaScript debugger integration via CDP
+7. **Result Size Analysis**: Rejects oversized results with smart suggestions instead of truncating
+8. **Smart Tools Mode**: Optional consolidated tools with dynamic visibility and auto-context
 
 ## Architecture
 
