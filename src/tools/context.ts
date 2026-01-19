@@ -655,7 +655,7 @@ export async function captureDOMSnapshot(page: Page): Promise<DOMSnapshot> {
   const result = await page.evaluate(script) as any;
 
   // Get navigation epoch from browser manager
-  const connection = browserManager.getActiveConnection();
+  const connection = browserManager.getConnection();
   const navigationEpoch = connection?.navigationEpoch ?? 0;
 
   return {
