@@ -103,6 +103,10 @@ export interface ConnectionStatus {
  */
 export interface QueryElementsResult {
   found: number;
+  afterVisibilityFilter?: number;
+  afterTextFilter?: number;
+  hiddenFiltered?: number;
+  textFiltered?: number;
   elements: ElementInfo[];
 }
 
