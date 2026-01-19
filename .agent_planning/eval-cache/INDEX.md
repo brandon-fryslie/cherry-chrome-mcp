@@ -18,6 +18,13 @@ This directory contains reusable evaluation findings that persist across work-ev
   - Edge cases and type safety characteristics
   - Last updated: 2026-01-18
 
+- **runtime-smart-suggestions.md** - Smart element suggestions for zero results
+  - Trigger condition (only on zero matches)
+  - Search term extraction and fuzzy matching strategy
+  - Output format and error handling
+  - Edge cases and performance characteristics
+  - Last updated: 2026-01-18
+
 ## Usage
 
 Work-evaluator checks this cache before deep evaluation. Cache entries save time by documenting:
