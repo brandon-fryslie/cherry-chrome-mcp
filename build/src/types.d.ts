@@ -45,6 +45,64 @@ export interface BreakpointInfo {
     condition?: string;
 }
 /**
+ * Snapshot of element state for DOM diffing
+ */
+export interface ElementSnapshot {
+    tag: string;
+    text: string;
+    visible: boolean;
+    disabled?: boolean;
+    value?: string;
+    classes: string[];
+}
+/**
+ * DOM snapshot capturing page state at a point in time
+ */
+export interface DOMSnapshot {
+    timestamp: number;
+    navigationEpoch: number;
+    counts: {
+        total: number;
+        buttons: number;
+        inputs: number;
+        links: number;
+        forms: number;
+        visible: number;
+    };
+    keyElements: Record<string, ElementSnapshot>;
+}
+/**
+ * Change details for a single element
+ */
+export interface ElementChange {
+    selector: string;
+    changes: string[];
+}
+/**
+ * Addition or removal details for a single element
+ */
+export interface ElementAddRemove {
+    selector: string;
+    element: ElementSnapshot;
+}
+/**
+ * Count change details
+ */
+export interface CountChange {
+    before: number;
+    after: number;
+}
+/**
+ * Difference between two DOM snapshots
+ */
+export interface DOMDiff {
+    hasChanges: boolean;
+    countChanges: Record<string, CountChange>;
+    added: ElementAddRemove[];
+    removed: ElementAddRemove[];
+    changed: ElementChange[];
+}
+/**
  * A Chrome connection managed by BrowserManager
  */
 export interface Connection {
@@ -80,6 +138,8 @@ export interface Connection {
     lastConsoleQuery: number | null;
     /** Navigation epoch at last query (null if never queried) */
     lastQueryEpoch: number | null;
+    /** Last DOM snapshot for diffing (null if no snapshot taken) */
+    lastDOMSnapshot?: DOMSnapshot | null;
 }
 /**
  * Connection status for listing

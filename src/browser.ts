@@ -206,6 +206,7 @@ export class BrowserManager {
         lastHmrTime: null,
         lastConsoleQuery: null,
         lastQueryEpoch: null,
+        lastDOMSnapshot: null,
       };
 
       // Setup console capture and navigation tracking
@@ -427,6 +428,7 @@ export class BrowserManager {
     connection.hmrUpdateCount = 0;
     connection.lastHmrTime = null;
     connection.consoleLogs = [];
+    connection.lastDOMSnapshot = null;
 
     // Re-setup console capture and navigation tracking on new page
     this.setupPageListeners(connection, page);

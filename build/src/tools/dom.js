@@ -4,7 +4,7 @@
  */
 import { browserManager } from '../browser.js';
 import { checkResultSize, successResponse, errorResponse, escapeForJs, } from '../response.js';
-import { gatherNavigateContext, gatherActionContext, gatherZeroResultSuggestions } from './context.js';
+import { gatherNavigateContext, gatherActionContext, gatherZeroResultSuggestions, captureDOMSnapshot } from './context.js';
 /**
  * Format time difference as human-readable string
  */
@@ -367,7 +367,7 @@ export async function queryElements(args) {
  * Click an element matching the CSS selector.
  *
  * Use query_elements first to verify the element exists and get the correct index.
- * Auto-includes element state after action when include_context is true (default).
+ * Auto-includes element state and DOM diff when include_context is true (default).
  */
 export async function clickElement(args) {
     const selector = args.selector;
@@ -376,6 +376,11 @@ export async function clickElement(args) {
     try {
         const page = browserManager.getPageOrThrow(args.connection_id);
         const escapedSelector = escapeForJs(selector);
+        // Capture snapshot before action (if context is requested)
+        let beforeSnapshot = null;
+        if (includeContext) {
+            beforeSnapshot = await captureDOMSnapshot(page);
+        }
         // JavaScript click with fallback (ported from Python)
         const script = `
       (() => {
@@ -402,7 +407,7 @@ export async function clickElement(args) {
             let response = `Clicked ${result.clicked}: ${result.text || ''}`;
             // Add context if requested
             if (includeContext) {
-                const context = await gatherActionContext(page, selector, 'click');
+                const context = await gatherActionContext(page, selector, 'click', beforeSnapshot, args.connection_id);
                 if (context) {
                     response += '\n' + context;
                 }
@@ -421,7 +426,7 @@ export async function clickElement(args) {
  * Fill text into an input element matching the CSS selector.
  *
  * Use query_elements first to verify the input exists and get the correct index.
- * Auto-includes element state after action when include_context is true (default).
+ * Auto-includes element state and DOM diff when include_context is true (default).
  */
 export async function fillElement(args) {
     const selector = args.selector;
@@ -433,6 +438,11 @@ export async function fillElement(args) {
         const page = browserManager.getPageOrThrow(args.connection_id);
         const escapedSelector = escapeForJs(selector);
         const escapedText = escapeForJs(text);
+        // Capture snapshot before action (if context is requested)
+        let beforeSnapshot = null;
+        if (includeContext) {
+            beforeSnapshot = await captureDOMSnapshot(page);
+        }
         // JavaScript fill with events (ported from Python)
         const script = `
       (() => {
@@ -471,7 +481,7 @@ export async function fillElement(args) {
             let response = `Filled ${result.filled} (${result.type})${submitMsg}`;
             // Add context if requested
             if (includeContext) {
-                const context = await gatherActionContext(page, selector, 'fill');
+                const context = await gatherActionContext(page, selector, 'fill', beforeSnapshot, args.connection_id);
                 if (context) {
                     response += '\n' + context;
                 }

@@ -158,6 +158,7 @@ export class BrowserManager {
                 lastHmrTime: null,
                 lastConsoleQuery: null,
                 lastQueryEpoch: null,
+                lastDOMSnapshot: null,
             };
             // Setup console capture and navigation tracking
             this.setupPageListeners(connection, page);
@@ -343,6 +344,7 @@ export class BrowserManager {
         connection.hmrUpdateCount = 0;
         connection.lastHmrTime = null;
         connection.consoleLogs = [];
+        connection.lastDOMSnapshot = null;
         // Re-setup console capture and navigation tracking on new page
         this.setupPageListeners(connection, page);
         // If debugger was enabled, need to recreate CDP session for new page

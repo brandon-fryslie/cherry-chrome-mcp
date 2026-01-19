@@ -25,7 +25,7 @@ export declare function queryElements(args: {
  * Click an element matching the CSS selector.
  *
  * Use query_elements first to verify the element exists and get the correct index.
- * Auto-includes element state after action when include_context is true (default).
+ * Auto-includes element state and DOM diff when include_context is true (default).
  */
 export declare function clickElement(args: {
     selector: string;
@@ -43,7 +43,7 @@ export declare function clickElement(args: {
  * Fill text into an input element matching the CSS selector.
  *
  * Use query_elements first to verify the input exists and get the correct index.
- * Auto-includes element state after action when include_context is true (default).
+ * Auto-includes element state and DOM diff when include_context is true (default).
  */
 export declare function fillElement(args: {
     selector: string;
