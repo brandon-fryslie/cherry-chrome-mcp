@@ -6,6 +6,7 @@ CSS selector-based Chrome DevTools MCP server with full JavaScript debugger supp
 
 - **CSS Selector-based**: Query and interact using familiar CSS selectors
 - **Powerful Filtering**: Text content and visibility filters for precise element selection
+- **Rich Element Details**: HTML snippets, structure summaries, and interactive element lists
 - **Compact Results**: Returns only what you query, not entire page snapshots
 - **Multi-Instance Support**: Connect to multiple Chrome instances simultaneously
 - **Full Debugger**: Breakpoints, stepping, call stack inspection, expression evaluation
@@ -226,16 +227,61 @@ Found 50 element(s) matching 'button'
 Showing first 5 of 5 remaining:
 ```
 
+## Query Elements Output Format
+
+Each element includes rich details to help understand page structure:
+
+**Example Output:**
+```
+[0] <form>
+    ID: #login-form
+    Classes: auth-form, card
+    Text: Log in to your account Email Password...
+    HTML: <form id="login-form" class="auth-form card" action="/api/login" method="POST">
+    Structure: .form-group*2 > (label + input) + .actions > (button.submit + a.forgot)
+    Interactive: input#email, input#password, button.submit, a.forgot-password
+    Attributes: {"method":"POST","action":"/api/login"}
+    Visible: true
+    Children: 3 direct, 11 total
+```
+
+**New Fields:**
+
+- **HTML**: Element's opening tag with all attributes (no children, 200 char limit)
+  - Example: `<div id="main" class="container" data-page="home">`
+
+- **Structure**: CSS-like skeleton showing child pattern (depth 2, ~100 char limit)
+  - Only shown if element has children
+  - Groups repeated siblings: `element*N`
+  - Examples:
+    - `ul > li*5 > a` (list with 5 items)
+    - `.field*3 > (label + input)` (3 form fields)
+    - `header + main + footer` (layout sections)
+
+- **Interactive**: List of interactive descendants (up to 6, with "+N more")
+  - Only shown if element has interactive children
+  - Detects: `button`, `a`, `input`, `select`, `textarea`, `role=*`
+  - Uses shortest selector: `id` > `data-testid` > `tag.class`
+  - Example: `input#email, button.submit, a.forgot +2 more`
+
+**Structure Syntax:**
+- `div`, `.class`, `#id` - Element identifiers
+- `element*N` - N repeated siblings
+- `>` - Direct child
+- `+` - Sibling
+- `(...)` - Grouping
+
 ## Key Differences from Standard Chrome DevTools MCP
 
 1. **CSS Selector-First**: Uses CSS selectors instead of accessibility tree refs
 2. **Focused Result Limits**: Default 5 elements (max 20) to keep responses compact
 3. **Powerful Filtering**: Text content and visibility filters for precise element selection
-4. **Compact Results**: Returns only queried data, not entire page snapshots
-5. **Multi-Instance**: Connect to multiple Chrome/Electron instances simultaneously
-6. **Full Debugger**: Complete JavaScript debugger integration via CDP
-7. **Result Size Analysis**: Rejects oversized results with smart suggestions instead of truncating
-8. **Smart Tools Mode**: Optional consolidated tools with dynamic visibility and auto-context
+4. **Rich Element Details**: HTML snippets, structure summaries, interactive element lists
+5. **Compact Results**: Returns only queried data, not entire page snapshots
+6. **Multi-Instance**: Connect to multiple Chrome/Electron instances simultaneously
+7. **Full Debugger**: Complete JavaScript debugger integration via CDP
+8. **Result Size Analysis**: Rejects oversized results with smart suggestions instead of truncating
+9. **Smart Tools Mode**: Optional consolidated tools with dynamic visibility and auto-context
 
 ## Architecture
 

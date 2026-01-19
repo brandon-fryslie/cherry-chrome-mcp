@@ -10,6 +10,7 @@ Cherry Chrome MCP is a TypeScript MCP server for Chrome automation with CSS sele
 - CSS selector-based DOM queries (not accessibility tree refs)
 - Result limit controls (default 5 elements, max 20)
 - Text and visibility filters for query_elements
+- HTML snippets and structure summaries in query results
 - Multi-instance Chrome connection support
 - Full JavaScript debugger via CDP (breakpoints, stepping, evaluation)
 - Smart result size analysis (rejects oversized results with suggestions)
@@ -161,6 +162,68 @@ Found 50 element(s) matching 'button'
   Text filter "Submit": 35 element(s) excluded
 Showing first 5 of 5 remaining:
 ```
+
+### Query Elements Output Format
+
+Each element returned by `query_elements` includes:
+
+**Example Output:**
+```
+[0] <form>
+    ID: #login-form
+    Classes: auth-form, card
+    Text: Log in to your account Email Password...
+    HTML: <form id="login-form" class="auth-form card" action="/api/login" method="POST">
+    Structure: .form-group*2 > (label + input) + .actions > (button.submit + a.forgot)
+    Interactive: input#email, input#password, button.submit, a.forgot-password
+    Attributes: {"method":"POST","action":"/api/login"}
+    Visible: true
+    Children: 3 direct, 11 total
+```
+
+**Field Descriptions:**
+
+- **HTML**: Element's opening tag with all attributes (no children)
+  - Truncated at 200 characters if needed
+  - Always present
+  - Example: `<div id="main" class="container" data-page="home">`
+
+- **Structure**: CSS-like skeleton showing child element pattern
+  - Only present if element has children
+  - Depth limited to 2 levels
+  - Grouped repeated siblings with `*N` notation
+  - Uses `>` for child, `+` for sibling
+  - Capped at ~100 characters
+  - Examples:
+    - `ul > li*5 > a` (list with 5 items)
+    - `.field*3 > (label + input)` (3 form fields)
+    - `header + main + footer` (layout sections)
+
+- **Interactive**: List of interactive descendant elements
+  - Only present if element has interactive children
+  - Detects: `button`, `a`, `input`, `select`, `textarea`, `role=*`
+  - Uses shortest selector: `id` > `data-testid` > `tag.class`
+  - Shows up to 6 items with "+N more" if exceeded
+  - Example: `input#email, button.submit, a.forgot +2 more`
+
+- **Children**: Direct and total descendant counts
+  - Format: `N direct, M total`
+  - Only present if element has children
+
+**Structure Syntax Reference:**
+- `div` - Element tag
+- `#id` - Element with ID
+- `.class` - Element with class
+- `element*N` - N repeated siblings of same type
+- `>` - Direct child relationship
+- `+` - Sibling relationship
+- `(...)` - Grouping for complex patterns
+
+**Implementation Notes:**
+- Structure generation groups consecutive siblings with same tag+class signature
+- Interactive detection walks all descendants (not just direct children)
+- HTML extraction uses `cloneNode(false)` to get opening tag only
+- All three new fields are generated in browser context for efficiency
 
 ### CDP Debugger Access
 

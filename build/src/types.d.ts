@@ -102,6 +102,13 @@ export interface QueryElementsResult {
     elements: ElementInfo[];
 }
 /**
+ * Interactive element info for elements with interactive descendants
+ */
+export interface InteractiveInfo {
+    items: string[];
+    more: number;
+}
+/**
  * Element information returned by query_elements
  */
 export interface ElementInfo {
@@ -125,6 +132,12 @@ export interface ElementInfo {
         placeholder: string | null;
         value: string | null;
     };
+    /** Element's opening tag HTML with all attributes (no children) */
+    html: string;
+    /** CSS-like structure skeleton showing child pattern (null if no children) */
+    structure: string | null;
+    /** Interactive descendants with their selectors (empty if no interactive children) */
+    interactive: InteractiveInfo;
 }
 /**
  * Child element info for elements with children
