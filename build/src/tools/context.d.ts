@@ -6,6 +6,13 @@
  */
 import type { Page } from 'puppeteer';
 /**
+ * Gather suggestions when query_elements returns zero results
+ *
+ * Analyzes the page to suggest alternative selectors based on fuzzy matching
+ * against the attempted selector.
+ */
+export declare function gatherZeroResultSuggestions(page: Page, attemptedSelector: string): Promise<string>;
+/**
  * Gather context when execution pauses (breakpoint, exception, manual pause)
  *
  * Returns formatted context including:

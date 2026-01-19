@@ -7,6 +7,8 @@
 
 import type { Page } from 'puppeteer';
 import { browserManager } from '../browser.js';
+import type { PageInventory, SelectorSuggestion } from '../types.js';
+import { escapeForJs } from '../response.js';
 
 /**
  * Truncate long values to prevent overwhelming context
@@ -48,6 +50,259 @@ function remoteObjectToString(obj: any): string {
   if (obj.type === 'function') return '[Function]';
 
   return obj.description || String(obj.value) || obj.type;
+}
+
+/**
+ * Extract search terms from a CSS selector
+ * Examples:
+ *   ".login-btn" → ["login", "btn"]
+ *   "#submitButton" → ["submit", "button"]
+ *   "button[data-test='login']" → ["button", "login"]
+ */
+function extractSearchTerms(selector: string): string[] {
+  const terms: string[] = [];
+
+  // Extract class names (.className)
+  const classMatches = selector.match(/\.([a-zA-Z0-9_-]+)/g);
+  if (classMatches) {
+    classMatches.forEach(cls => {
+      // Remove the dot and split on common separators
+      const className = cls.substring(1);
+      // Split on hyphens, underscores, camelCase
+      const parts = className.split(/[-_]|(?=[A-Z])/);
+      terms.push(...parts.filter(p => p.length > 0));
+    });
+  }
+
+  // Extract ID (#idName)
+  const idMatches = selector.match(/#([a-zA-Z0-9_-]+)/g);
+  if (idMatches) {
+    idMatches.forEach(id => {
+      const idName = id.substring(1);
+      const parts = idName.split(/[-_]|(?=[A-Z])/);
+      terms.push(...parts.filter(p => p.length > 0));
+    });
+  }
+
+  // Extract tag names (at start or after space/> combinator)
+  const tagMatches = selector.match(/(?:^|[\s>])([a-zA-Z][a-zA-Z0-9]*)/g);
+  if (tagMatches) {
+    tagMatches.forEach(tag => {
+      const tagName = tag.trim().replace(/^>/, '');
+      if (tagName.length > 0) {
+        terms.push(tagName);
+      }
+    });
+  }
+
+  // Extract attribute values
+  const attrMatches = selector.match(/\[([a-zA-Z-]+)=['"]?([^'"[\]]+)['"]?\]/g);
+  if (attrMatches) {
+    attrMatches.forEach(attr => {
+      const match = attr.match(/\[([a-zA-Z-]+)=['"]?([^'"[\]]+)['"]?\]/);
+      if (match && match[2]) {
+        const parts = match[2].split(/[-_]|(?=[A-Z])/);
+        terms.push(...parts.filter(p => p.length > 0));
+      }
+    });
+  }
+
+  // Lowercase and dedupe
+  return [...new Set(terms.map(t => t.toLowerCase()))];
+}
+
+/**
+ * Find similar selectors based on fuzzy matching
+ */
+function findSimilarSelectors(
+  attemptedSelector: string,
+  inventory: PageInventory
+): SelectorSuggestion[] {
+  const suggestions: SelectorSuggestion[] = [];
+  const terms = extractSearchTerms(attemptedSelector);
+
+  if (terms.length === 0) {
+    // No terms extracted, can't make suggestions
+    return [];
+  }
+
+  // Match against classes
+  for (const [className, count] of Object.entries(inventory.classCounts)) {
+    const classLower = className.toLowerCase();
+    const matchedTerm = terms.find(term => classLower.includes(term));
+
+    if (matchedTerm) {
+      suggestions.push({
+        selector: `.${className}`,
+        count,
+        reason: `class contains "${matchedTerm}"`
+      });
+    }
+  }
+
+  // Match against IDs
+  for (const id of inventory.ids) {
+    const idLower = id.toLowerCase();
+    const matchedTerm = terms.find(term => idLower.includes(term));
+
+    if (matchedTerm) {
+      suggestions.push({
+        selector: `#${id}`,
+        count: 1,
+        reason: `ID contains "${matchedTerm}"`
+      });
+    }
+  }
+
+  // Match against tags (if tag was in attempted selector)
+  for (const [tag, count] of Object.entries(inventory.tagCounts)) {
+    if (terms.includes(tag.toLowerCase())) {
+      suggestions.push({
+        selector: tag,
+        count,
+        reason: `tag matches "${tag}"`
+      });
+    }
+  }
+
+  // Match against data attributes
+  for (const [attr, count] of Object.entries(inventory.dataAttrs)) {
+    const attrLower = attr.toLowerCase();
+    const matchedTerm = terms.find(term => attrLower.includes(term));
+
+    if (matchedTerm) {
+      suggestions.push({
+        selector: `[${attr}]`,
+        count,
+        reason: `attribute contains "${matchedTerm}"`
+      });
+    }
+  }
+
+  // Sort by count (descending), then by selector length (ascending for readability)
+  suggestions.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.selector.length - b.selector.length;
+  });
+
+  // Limit to top 5
+  return suggestions.slice(0, 5);
+}
+
+/**
+ * Gather suggestions when query_elements returns zero results
+ *
+ * Analyzes the page to suggest alternative selectors based on fuzzy matching
+ * against the attempted selector.
+ */
+export async function gatherZeroResultSuggestions(
+  page: Page,
+  attemptedSelector: string
+): Promise<string> {
+  const lines: string[] = [];
+
+  try {
+    const escapedSelector = escapeForJs(attemptedSelector);
+
+    // Gather page inventory via JavaScript execution
+    const script = `
+      (() => {
+        const allElements = document.querySelectorAll('*');
+
+        // Extract classes with counts
+        const classCounts = {};
+        allElements.forEach(el => {
+          if (el.className && typeof el.className === 'string') {
+            el.className.split(' ').filter(c => c).forEach(cls => {
+              classCounts[cls] = (classCounts[cls] || 0) + 1;
+            });
+          }
+        });
+
+        // Extract IDs
+        const ids = Array.from(document.querySelectorAll('[id]'))
+          .map(el => el.id)
+          .filter(id => id);
+
+        // Tag counts
+        const tagCounts = {};
+        allElements.forEach(el => {
+          const tag = el.tagName.toLowerCase();
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        });
+
+        // Data attributes
+        const dataAttrs = {};
+        allElements.forEach(el => {
+          Array.from(el.attributes)
+            .filter(a => a.name.startsWith('data-'))
+            .forEach(a => {
+              dataAttrs[a.name] = (dataAttrs[a.name] || 0) + 1;
+            });
+        });
+
+        // Interactive elements summary
+        const interactive = {
+          buttons: document.querySelectorAll('button, [role="button"]').length,
+          inputs: document.querySelectorAll('input, textarea, select').length,
+          links: document.querySelectorAll('a[href]').length,
+          forms: document.querySelectorAll('form').length,
+        };
+
+        return {
+          classCounts,
+          ids,
+          tagCounts,
+          dataAttrs,
+          interactive,
+          totalElements: allElements.length
+        };
+      })()
+    `;
+
+    const inventory = await page.evaluate(script) as PageInventory;
+
+    // Find similar selectors
+    const suggestions = findSimilarSelectors(attemptedSelector, inventory);
+
+    if (suggestions.length > 0) {
+      lines.push('');
+      lines.push('Similar selectors that exist:');
+      for (const suggestion of suggestions) {
+        const countText = suggestion.count === 1 ? '1 element' : `${suggestion.count} elements`;
+        lines.push(`  - ${suggestion.selector} (${countText}) - ${suggestion.reason}`);
+      }
+    }
+
+    // Page structure summary
+    lines.push('');
+    lines.push('Page structure:');
+    const parts: string[] = [];
+
+    if (inventory.interactive.buttons > 0) {
+      parts.push(`${inventory.interactive.buttons} button${inventory.interactive.buttons === 1 ? '' : 's'}`);
+    }
+    if (inventory.interactive.inputs > 0) {
+      parts.push(`${inventory.interactive.inputs} input${inventory.interactive.inputs === 1 ? '' : 's'}`);
+    }
+    if (inventory.interactive.links > 0) {
+      parts.push(`${inventory.interactive.links} link${inventory.interactive.links === 1 ? '' : 's'}`);
+    }
+    if (inventory.interactive.forms > 0) {
+      parts.push(`${inventory.interactive.forms} form${inventory.interactive.forms === 1 ? '' : 's'}`);
+    }
+
+    if (parts.length > 0) {
+      lines.push(`  - ${parts.join(', ')}`);
+    }
+    lines.push(`  - Total: ${inventory.totalElements} elements`);
+
+  } catch (err) {
+    // If suggestion gathering fails, return empty string (no suggestions)
+    return '';
+  }
+
+  return lines.join('\n');
 }
 
 /**

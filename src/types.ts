@@ -203,3 +203,38 @@ export interface ConsoleMessage {
   /** Navigation epoch when message was captured */
   navigationEpoch: number;
 }
+
+/**
+ * Page inventory for element suggestions
+ */
+export interface PageInventory {
+  /** Class names with their occurrence counts */
+  classCounts: Record<string, number>;
+  /** ID values found on the page */
+  ids: string[];
+  /** Tag names with their occurrence counts */
+  tagCounts: Record<string, number>;
+  /** Data attributes with their occurrence counts */
+  dataAttrs: Record<string, number>;
+  /** Interactive element counts */
+  interactive: {
+    buttons: number;
+    inputs: number;
+    links: number;
+    forms: number;
+  };
+  /** Total element count */
+  totalElements: number;
+}
+
+/**
+ * A selector suggestion with metadata
+ */
+export interface SelectorSuggestion {
+  /** The suggested CSS selector */
+  selector: string;
+  /** Number of elements matching this selector */
+  count: number;
+  /** Reason for the suggestion */
+  reason: string;
+}

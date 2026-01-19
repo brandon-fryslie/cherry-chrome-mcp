@@ -4,7 +4,7 @@
  */
 import { browserManager } from '../browser.js';
 import { checkResultSize, successResponse, errorResponse, escapeForJs, } from '../response.js';
-import { gatherNavigateContext, gatherActionContext } from './context.js';
+import { gatherNavigateContext, gatherActionContext, gatherZeroResultSuggestions } from './context.js';
 /**
  * Format time difference as human-readable string
  */
@@ -277,7 +277,9 @@ export async function queryElements(args) {
     `;
         const data = (await page.evaluate(script));
         if (data.found === 0) {
-            return successResponse(`No elements found matching selector: ${selector}`);
+            // Gather smart suggestions for zero results
+            const suggestions = await gatherZeroResultSuggestions(page, selector);
+            return successResponse(`No elements found matching selector: ${selector}${suggestions}`);
         }
         // Build output with filter info
         const output = [];
