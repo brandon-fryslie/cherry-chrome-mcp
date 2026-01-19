@@ -819,11 +819,113 @@ const smartTools: Tool[] = [
 // Select tool set based on feature flag
 const activeTools = USE_LEGACY_TOOLS ? legacyTools : smartTools;
 
+/**
+ * Error metadata for classification and recovery guidance.
+ */
+interface ErrorInfo {
+  readonly errorType: 'CONNECTION' | 'DEBUGGER' | 'STATE' | 'EXECUTION' | 'UNKNOWN';
+  readonly recoverable: boolean;
+  readonly suggestion?: string;
+}
+
+/**
+ * Classified error information for routing and observability.
+ */
+interface ClassifiedError {
+  errorType: 'CONNECTION' | 'DEBUGGER' | 'STATE' | 'EXECUTION' | 'UNKNOWN';
+  message: string;
+  recoverable: boolean;
+  suggestion?: string;
+  toolName?: string;
+  connectionId?: string;
+}
+
+/**
+ * Classify an error by type and extract metadata.
+ *
+ * Looks for errorInfo property on error object (added to custom error classes).
+ * Falls back to UNKNOWN for unexpected error types.
+ *
+ * Returns structured ClassifiedError with type, message, recovery info, and context.
+ */
+function classifyError(
+  error: unknown,
+  toolName: string,
+  connectionId?: string
+): ClassifiedError {
+  // Check if error has errorInfo property (our custom errors)
+  if (error && typeof error === 'object' && 'errorInfo' in error) {
+    const info = (error as any).errorInfo as ErrorInfo;
+    return {
+      errorType: info.errorType,
+      message: error instanceof Error ? error.message : String(error),
+      recoverable: info.recoverable,
+      suggestion: info.suggestion,
+      toolName,
+      connectionId,
+    };
+  }
+
+  // Fallback for unknown errors (shouldn't happen, but handle gracefully)
+  return {
+    errorType: 'UNKNOWN',
+    message: error instanceof Error ? error.message : String(error),
+    recoverable: false,
+    toolName,
+    connectionId,
+  };
+}
+
+/**
+ * Log a classified error with structured context.
+ *
+ * Output format:
+ * [ISO_TIMESTAMP] [ERROR:TYPE] tool=<name> [conn=<id>] [recoverable=true/false] <message>
+ *   Suggestion: <suggestion>
+ */
+function logErrorEvent(classified: ClassifiedError): void {
+  const timestamp = new Date().toISOString();
+  const parts = [
+    `[ERROR:${classified.errorType}]`,
+    `tool=${classified.toolName}`,
+    classified.connectionId ? `conn=${classified.connectionId}` : null,
+    `recoverable=${classified.recoverable}`,
+  ].filter(Boolean);
+
+  console.error(`${timestamp} ${parts.join(' ')} ${classified.message}`);
+
+  if (classified.suggestion) {
+    console.error(`  Suggestion: ${classified.suggestion}`);
+  }
+}
+
 // Handle tool list requests
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return { tools: activeTools };
 });
 
+/**
+ * Global error classification and handling in MCP tool routing.
+ *
+ * Error Flow:
+ * 1. Tool executes within try-catch block
+ * 2. Tool calls browserManager.*OrThrow() or throws CustomError
+ * 3. Tool catches and returns error via errorResponse()
+ * 4. If uncaught (shouldn't happen), global handler catches
+ * 5. Global handler classifies error by type
+ * 6. Error is logged to console with structured context
+ * 7. Classified error returned to MCP client
+ *
+ * Error Types and Recovery:
+ * - CONNECTION: Chrome not connected → call chrome() to connect
+ * - DEBUGGER: Debugger not enabled → call enable_debug_tools()
+ * - STATE: Execution not in required state → pause/resume/breakpoint
+ * - EXECUTION: Operation failed during execution → check parameters
+ * - UNKNOWN: Unexpected error type → report for debugging
+ *
+ * All error messages are preserved. Suggestions added based on error type.
+ * Console logs include tool name, error type, and recovery suggestion.
+ */
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
@@ -993,14 +1095,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
   } catch (error) {
+    const toolName = request.params.name;
+    const connectionId = (request.params.arguments as any)?.connection_id;
+    const classified = classifyError(error, toolName, connectionId);
+
+    logErrorEvent(classified);
+
+    // Construct error message with suggestion
+    const errorMessage = classified.suggestion
+      ? `${classified.message}\n\nSuggestion: ${classified.suggestion}`
+      : classified.message;
+
     return {
-      content: [
-        {
-          type: 'text',
-          text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-        },
-      ],
+      content: [{ type: 'text', text: errorMessage }],
       isError: true,
+      // Metadata for client-side error handling
+      _toolName: toolName,
+      _errorType: classified.errorType,
+      _recoverable: classified.recoverable,
     };
   }
 });
