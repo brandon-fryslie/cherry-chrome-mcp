@@ -67,6 +67,194 @@ const server = new Server(
 );
 
 /**
+ * Shared tool metadata (eliminates duplication between legacy and smart modes)
+ */
+const toolMetadata = {
+  dom: {
+    queryElements: {
+      description:
+        'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'CSS selector to query (e.g., ".class", "#id", "button")',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of elements to return',
+            default: 5,
+          },
+          text_contains: {
+            type: 'string',
+            description: 'Filter to elements containing this text (case-insensitive partial match)',
+          },
+          include_hidden: {
+            type: 'boolean',
+            description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
+            default: false,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use (uses active if not specified)',
+          },
+        },
+        required: ['selector'],
+      },
+    },
+    clickElement: {
+      description:
+        'Click an element matching the CSS selector. Use query_elements first to verify the element exists.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'CSS selector for the element',
+          },
+          index: {
+            type: 'number',
+            description: 'Which matching element to click (0 = first)',
+            default: 0,
+          },
+          include_context: {
+            type: 'boolean',
+            description: 'Include element state after click (default: true)',
+            default: true,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+        required: ['selector'],
+      },
+    },
+    fillElement: {
+      description:
+        'Fill text into an input element matching the CSS selector. Use query_elements first to verify the input exists.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'CSS selector for the input element',
+          },
+          text: {
+            type: 'string',
+            description: 'Text to enter',
+          },
+          index: {
+            type: 'number',
+            description: 'Which matching element to fill (0 = first)',
+            default: 0,
+          },
+          submit: {
+            type: 'boolean',
+            description: 'Press Enter after filling',
+            default: false,
+          },
+          include_context: {
+            type: 'boolean',
+            description: 'Include element state after fill (default: true)',
+            default: true,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+        required: ['selector', 'text'],
+      },
+    },
+    navigate: {
+      description: 'Navigate to a URL and wait for page load.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          url: {
+            type: 'string',
+            description: 'URL to navigate to',
+          },
+          include_context: {
+            type: 'boolean',
+            description: 'Include page title and element summary (default: true)',
+            default: true,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+        required: ['url'],
+      },
+    },
+    getConsoleLogs: {
+      description:
+        'Get console log messages from the browser. Messages are captured automatically.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          filter_level: {
+            type: 'string',
+            description: 'Filter by level: "all", "error", "warning", "info", "debug", "log"',
+            default: 'all',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of messages to return (most recent)',
+            default: 3,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+      },
+    },
+  },
+  connection: {
+    chromeListConnections: {
+      description:
+        'List all active Chrome connections with their status (URL, active, paused state).',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {},
+      },
+    },
+    chromeSwitchConnection: {
+      description:
+        'Switch the active Chrome connection. All tools will use the active connection.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          connection_id: {
+            type: 'string',
+            description: 'ID of the connection to make active',
+          },
+        },
+        required: ['connection_id'],
+      },
+    },
+    chromeDisconnect: {
+      description:
+        'Disconnect from a specific Chrome instance. If you disconnect the active connection, the next available will become active.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          connection_id: {
+            type: 'string',
+            description: 'ID of the connection to disconnect',
+          },
+        },
+        required: ['connection_id'],
+      },
+    },
+  },
+};
+
+/**
  * Legacy tool definitions (backward compatible)
  */
 const legacyTools: Tool[] = [
@@ -130,45 +318,10 @@ const legacyTools: Tool[] = [
       },
     },
   },
-  {
-    name: 'chrome_list_connections',
-    description:
-      'List all active Chrome connections with their status (URL, active, paused state).',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-  },
-  {
-    name: 'chrome_switch_connection',
-    description:
-      'Switch the active Chrome connection. All tools will use the active connection.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        connection_id: {
-          type: 'string',
-          description: 'ID of the connection to make active',
-        },
-      },
-      required: ['connection_id'],
-    },
-  },
-  {
-    name: 'chrome_disconnect',
-    description:
-      'Disconnect from a specific Chrome instance. If you disconnect the active connection, the next available will become active.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        connection_id: {
-          type: 'string',
-          description: 'ID of the connection to disconnect',
-        },
-      },
-      required: ['connection_id'],
-    },
-  },
+  // Connection tools (from shared metadata)
+  { name: 'chrome_list_connections', ...toolMetadata.connection.chromeListConnections },
+  { name: 'chrome_switch_connection', ...toolMetadata.connection.chromeSwitchConnection },
+  { name: 'chrome_disconnect', ...toolMetadata.connection.chromeDisconnect },
   {
     name: 'list_targets',
     description:
@@ -209,154 +362,12 @@ const legacyTools: Tool[] = [
       },
     },
   },
-  // DOM Tools
-  {
-    name: 'query_elements',
-    description:
-      'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: {
-          type: 'string',
-          description: 'CSS selector to query (e.g., ".class", "#id", "button")',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of elements to return',
-          default: 5,
-        },
-        text_contains: {
-          type: 'string',
-          description: 'Filter to elements containing this text (case-insensitive partial match)',
-        },
-        include_hidden: {
-          type: 'boolean',
-          description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
-          default: false,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use (uses active if not specified)',
-        },
-      },
-      required: ['selector'],
-    },
-  },
-  {
-    name: 'click_element',
-    description:
-      'Click an element matching the CSS selector. Use query_elements first to verify the element exists.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: {
-          type: 'string',
-          description: 'CSS selector for the element',
-        },
-        index: {
-          type: 'number',
-          description: 'Which matching element to click (0 = first)',
-          default: 0,
-        },
-        include_context: {
-          type: 'boolean',
-          description: 'Include element state after click (default: true)',
-          default: true,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-      required: ['selector'],
-    },
-  },
-  {
-    name: 'fill_element',
-    description:
-      'Fill text into an input element matching the CSS selector. Use query_elements first to verify the input exists.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: {
-          type: 'string',
-          description: 'CSS selector for the input element',
-        },
-        text: {
-          type: 'string',
-          description: 'Text to enter',
-        },
-        index: {
-          type: 'number',
-          description: 'Which matching element to fill (0 = first)',
-          default: 0,
-        },
-        submit: {
-          type: 'boolean',
-          description: 'Press Enter after filling',
-          default: false,
-        },
-        include_context: {
-          type: 'boolean',
-          description: 'Include element state after fill (default: true)',
-          default: true,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-      required: ['selector', 'text'],
-    },
-  },
-  {
-    name: 'navigate',
-    description: 'Navigate to a URL and wait for page load.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        url: {
-          type: 'string',
-          description: 'URL to navigate to',
-        },
-        include_context: {
-          type: 'boolean',
-          description: 'Include page title and element summary (default: true)',
-          default: true,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'get_console_logs',
-    description:
-      'Get console log messages from the browser. Messages are captured automatically.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        filter_level: {
-          type: 'string',
-          description: 'Filter by level: "all", "error", "warning", "info", "debug", "log"',
-          default: 'all',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of messages to return (most recent)',
-          default: 3,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-    },
-  },
+  // DOM Tools (from shared metadata)
+  { name: 'query_elements', ...toolMetadata.dom.queryElements },
+  { name: 'click_element', ...toolMetadata.dom.clickElement },
+  { name: 'fill_element', ...toolMetadata.dom.fillElement },
+  { name: 'navigate', ...toolMetadata.dom.navigate },
+  { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
   // Debugger Tools
   {
     name: 'debugger_enable',
@@ -599,45 +610,10 @@ const smartTools: Tool[] = [
       required: ['action'],
     },
   },
-  {
-    name: 'chrome_list_connections',
-    description:
-      'List all active Chrome connections with their status (URL, active, paused state).',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-  },
-  {
-    name: 'chrome_switch_connection',
-    description:
-      'Switch the active Chrome connection. All tools will use the active connection.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        connection_id: {
-          type: 'string',
-          description: 'ID of the connection to make active',
-        },
-      },
-      required: ['connection_id'],
-    },
-  },
-  {
-    name: 'chrome_disconnect',
-    description:
-      'Disconnect from a specific Chrome instance. If you disconnect the active connection, the next available will become active.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        connection_id: {
-          type: 'string',
-          description: 'ID of the connection to disconnect',
-        },
-      },
-      required: ['connection_id'],
-    },
-  },
+  // Connection tools (from shared metadata)
+  { name: 'chrome_list_connections', ...toolMetadata.connection.chromeListConnections },
+  { name: 'chrome_switch_connection', ...toolMetadata.connection.chromeSwitchConnection },
+  { name: 'chrome_disconnect', ...toolMetadata.connection.chromeDisconnect },
   {
     name: 'target',
     description:
@@ -670,154 +646,12 @@ const smartTools: Tool[] = [
       required: ['action'],
     },
   },
-  // DOM Tools (same as legacy)
-  {
-    name: 'query_elements',
-    description:
-      'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: {
-          type: 'string',
-          description: 'CSS selector to query (e.g., ".class", "#id", "button")',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of elements to return',
-          default: 5,
-        },
-        text_contains: {
-          type: 'string',
-          description: 'Filter to elements containing this text (case-insensitive partial match)',
-        },
-        include_hidden: {
-          type: 'boolean',
-          description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
-          default: false,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use (uses active if not specified)',
-        },
-      },
-      required: ['selector'],
-    },
-  },
-  {
-    name: 'click_element',
-    description:
-      'Click an element matching the CSS selector. Use query_elements first to verify the element exists.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: {
-          type: 'string',
-          description: 'CSS selector for the element',
-        },
-        index: {
-          type: 'number',
-          description: 'Which matching element to click (0 = first)',
-          default: 0,
-        },
-        include_context: {
-          type: 'boolean',
-          description: 'Include element state after click (default: true)',
-          default: true,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-      required: ['selector'],
-    },
-  },
-  {
-    name: 'fill_element',
-    description:
-      'Fill text into an input element matching the CSS selector. Use query_elements first to verify the input exists.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: {
-          type: 'string',
-          description: 'CSS selector for the input element',
-        },
-        text: {
-          type: 'string',
-          description: 'Text to enter',
-        },
-        index: {
-          type: 'number',
-          description: 'Which matching element to fill (0 = first)',
-          default: 0,
-        },
-        submit: {
-          type: 'boolean',
-          description: 'Press Enter after filling',
-          default: false,
-        },
-        include_context: {
-          type: 'boolean',
-          description: 'Include element state after fill (default: true)',
-          default: true,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-      required: ['selector', 'text'],
-    },
-  },
-  {
-    name: 'navigate',
-    description: 'Navigate to a URL and wait for page load.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        url: {
-          type: 'string',
-          description: 'URL to navigate to',
-        },
-        include_context: {
-          type: 'boolean',
-          description: 'Include page title and element summary (default: true)',
-          default: true,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'get_console_logs',
-    description:
-      'Get console log messages from the browser. Messages are captured automatically.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        filter_level: {
-          type: 'string',
-          description: 'Filter by level: "all", "error", "warning", "info", "debug", "log"',
-          default: 'all',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of messages to return (most recent)',
-          default: 3,
-        },
-        connection_id: {
-          type: 'string',
-          description: 'Chrome connection to use',
-        },
-      },
-    },
-  },
+  // DOM Tools (from shared metadata)
+  { name: 'query_elements', ...toolMetadata.dom.queryElements },
+  { name: 'click_element', ...toolMetadata.dom.clickElement },
+  { name: 'fill_element', ...toolMetadata.dom.fillElement },
+  { name: 'navigate', ...toolMetadata.dom.navigate },
+  { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
   // Debugger Tools (consolidated)
   {
     name: 'enable_debug_tools',
