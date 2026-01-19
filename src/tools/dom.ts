@@ -36,6 +36,8 @@ function formatTimeSince(timestamp: number): string {
 export async function queryElements(args: {
   selector: string;
   limit?: number;
+  text_contains?: string;
+  include_hidden?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const selector = args.selector;
@@ -49,6 +51,10 @@ export async function queryElements(args: {
   try {
     const page = browserManager.getPageOrThrow(args.connection_id);
     const escapedSelector = escapeForJs(selector);
+
+    // Prepare text_contains value for injection
+    const textContainsValue = args.text_contains ? escapeForJs(args.text_contains) : null;
+    const includeHidden = args.include_hidden ?? false;
 
     // JavaScript to execute in page context
     const script = `
@@ -66,15 +72,64 @@ export async function queryElements(args: {
           return count;
         }
 
-        // Get all matching elements
-        const allElements = Array.from(document.querySelectorAll('${escapedSelector}'));
+        // Check if element is visible
+        function isVisible(el) {
+          // Check offsetParent (null for hidden elements, except body/html)
+          if (el.offsetParent === null && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+            // Could still be visible if it's fixed/sticky positioned
+            const style = getComputedStyle(el);
+            if (style.position !== 'fixed' && style.position !== 'sticky') {
+              return false;
+            }
+          }
 
-        // Apply limit (no depth filtering)
+          const style = getComputedStyle(el);
+          if (style.display === 'none') return false;
+          if (style.visibility === 'hidden') return false;
+
+          // Check for zero dimensions
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) return false;
+
+          return true;
+        }
+
+        // Get all matching elements
+        let elements = Array.from(document.querySelectorAll('${escapedSelector}'));
+        const totalMatched = elements.length;
+
+        // Apply visibility filter (unless include_hidden is true)
+        const includeHidden = ${includeHidden};
+        let hiddenCount = 0;
+        if (!includeHidden) {
+          const beforeFilter = elements.length;
+          elements = elements.filter(el => isVisible(el));
+          hiddenCount = beforeFilter - elements.length;
+        }
+
+        // Apply text filter
+        const textContains = ${textContainsValue ? `'${textContainsValue}'` : 'null'};
+        let textFilteredCount = 0;
+        if (textContains) {
+          const beforeFilter = elements.length;
+          const searchLower = textContains.toLowerCase();
+          elements = elements.filter(el => {
+            const text = el.textContent || '';
+            return text.toLowerCase().includes(searchLower);
+          });
+          textFilteredCount = beforeFilter - elements.length;
+        }
+
+        // Apply limit
         const limit = ${limit};
-        const limitedElements = allElements.slice(0, limit);
+        const limitedElements = elements.slice(0, limit);
 
         return {
-          found: allElements.length,
+          found: totalMatched,
+          afterVisibilityFilter: includeHidden ? totalMatched : totalMatched - hiddenCount,
+          afterTextFilter: elements.length,
+          hiddenFiltered: hiddenCount,
+          textFiltered: textFilteredCount,
           elements: limitedElements.map((el, idx) => {
             const rect = el.getBoundingClientRect();
 
@@ -120,12 +175,30 @@ export async function queryElements(args: {
       return successResponse(`No elements found matching selector: ${selector}`);
     }
 
-    // Build output
+    // Build output with filter info
     const output: string[] = [];
-
     const total = data.found;
+    const afterVisibility = data.afterVisibilityFilter ?? total;
+    const afterText = data.afterTextFilter ?? afterVisibility;
     const shown = data.elements.length;
-    output.push(`Found ${total} element(s) matching '${selector}' (showing first ${shown}):`);
+
+    // Show filter summary if filters are active
+    if ((data.hiddenFiltered && data.hiddenFiltered > 0) || (data.textFiltered && data.textFiltered > 0)) {
+      output.push(`Found ${total} element(s) matching '${selector}'`);
+
+      if (data.hiddenFiltered && data.hiddenFiltered > 0) {
+        output.push(`  Visibility filter: ${data.hiddenFiltered} hidden element(s) excluded`);
+      }
+
+      if (data.textFiltered && data.textFiltered > 0) {
+        output.push(`  Text filter "${args.text_contains}": ${data.textFiltered} element(s) excluded`);
+      }
+
+      output.push(`Showing first ${shown} of ${afterText} remaining:`);
+    } else {
+      output.push(`Found ${total} element(s) matching '${selector}' (showing first ${shown}):`);
+    }
+
     output.push('');
 
     for (const el of data.elements) {
@@ -157,16 +230,16 @@ export async function queryElements(args: {
       // Show child info for elements with children
       if (el.childInfo) {
         const direct = el.childInfo.directChildren;
-        const total = el.childInfo.totalDescendants;
-        output.push(`    Children: ${direct} direct, ${total} total`);
+        const totalDesc = el.childInfo.totalDescendants;
+        output.push(`    Children: ${direct} direct, ${totalDesc} total`);
       }
 
       output.push('');
     }
 
     // Add hint if results were truncated
-    if (total > shown) {
-      output.push(`[${total - shown} more element(s) not shown. Use a more specific selector to narrow results.]`);
+    if (afterText > shown) {
+      output.push(`[${afterText - shown} more element(s) not shown. Use a more specific selector to narrow results.]`);
       output.push('');
     }
 
