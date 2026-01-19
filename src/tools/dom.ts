@@ -29,6 +29,20 @@ function getPage(connectionId?: string) {
 }
 
 /**
+ * Format time difference as human-readable string
+ */
+function formatTimeSince(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+/**
  * Find elements by CSS selector and return their details.
  *
  * Automatically filters out deeply nested elements (depth > 3 from body) to prevent
@@ -429,19 +443,48 @@ export async function getConsoleLogs(args: {
     // Filter logs by level if specified
     const filteredLogs = filterLevel === 'all' ? logs : logs.filter(log => log.level === filterLevel);
 
+    // Build freshness header
+    const output: string[] = [];
+    output.push('--- PAGE STATE ---');
+
+    // Freshness delta vs last query
+    if (connection.lastQueryEpoch !== null && connection.lastConsoleQuery !== null) {
+      if (connection.lastQueryEpoch < connection.navigationEpoch) {
+        output.push('[PAGE RELOADED since your last query]');
+      } else if (connection.hmrUpdateCount > 0 && connection.lastHmrTime !== null && connection.lastHmrTime > connection.lastConsoleQuery) {
+        output.push('[HMR UPDATE occurred since your last query]');
+      } else {
+        output.push('[No changes since your last query]');
+      }
+    }
+
+    // Current page state
+    output.push(`Navigation epoch: ${connection.navigationEpoch}`);
+    output.push(`Last navigation: ${formatTimeSince(connection.lastNavigationTime)}`);
+
+    if (connection.hmrUpdateCount > 0 && connection.lastHmrTime !== null) {
+      output.push(`HMR updates since navigation: ${connection.hmrUpdateCount}`);
+      output.push(`Last HMR update: ${formatTimeSince(connection.lastHmrTime)}`);
+    }
+
+    output.push('');
+
+    // Update query tracking for next call
+    connection.lastConsoleQuery = Date.now();
+    connection.lastQueryEpoch = connection.navigationEpoch;
+
     if (filteredLogs.length === 0) {
-      return successResponse(
-        `No console messages captured${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}.`
-      );
+      output.push(`No console messages captured${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}.`);
+      return successResponse(output.join('\n'));
     }
 
     // Get most recent logs up to limit
     const recentLogs = filteredLogs.slice(-limit);
     const totalCount = filteredLogs.length;
 
-    const output: string[] = [];
+    output.push('--- CONSOLE MESSAGES ---');
     output.push(
-      `Console messages (showing ${recentLogs.length} of ${totalCount}${filterLevel !== 'all' ? `, filter: ${filterLevel}` : ''}):`
+      `Showing ${recentLogs.length} of ${totalCount}${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}:`
     );
     output.push('');
 
