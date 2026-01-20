@@ -112,7 +112,7 @@ Changed: #status text "Pending" → "Complete"
 
 ---
 
-#### selector-builder [PROPOSED]
+#### selector-builder [PLANNED]
 
 **Description**: Interactive element discovery using natural language and spatial hints.
 

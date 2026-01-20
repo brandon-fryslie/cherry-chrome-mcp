@@ -29,6 +29,11 @@ export {
   getConsoleLogs,
 } from './dom.js';
 
+// Selector builder / element inspector
+export {
+  inspectElement,
+} from './inspect.js';
+
 // Debugger tools (original exports for backward compatibility)
 export {
   debuggerEnable,

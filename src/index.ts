@@ -35,6 +35,7 @@ import {
   fillElement,
   navigate,
   getConsoleLogs,
+  inspectElement,
   debuggerEnable,
   debuggerSetBreakpoint,
   debuggerGetCallStack,
@@ -213,6 +214,83 @@ const toolMetadata = {
         },
       },
     },
+    inspectElement: {
+      description:
+        'Discover CSS selectors from natural language descriptions and element attributes. Returns ranked selector candidates with stability scores. Use when you know what element you want but not its exact selector.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          description: {
+            type: 'string',
+            description: 'Natural language description of element (e.g., "login button", "email input")',
+          },
+          text_contains: {
+            type: 'string',
+            description: 'Text content to match (exact substring)',
+          },
+          tag: {
+            type: 'string',
+            description: 'Filter by HTML tag (button, input, a, div, etc.)',
+          },
+          attributes: {
+            type: 'object',
+            description: 'Filter by element attributes',
+            properties: {
+              role: {
+                type: 'string',
+                description: 'ARIA role attribute',
+              },
+              aria_label: {
+                type: 'string',
+                description: 'ARIA label attribute',
+              },
+              data_testid: {
+                type: 'string',
+                description: 'data-testid attribute (supports wildcard * matching)',
+              },
+              placeholder: {
+                type: 'string',
+                description: 'Placeholder text for inputs',
+              },
+              type: {
+                type: 'string',
+                description: 'Input type (text, password, email, etc.)',
+              },
+            },
+          },
+          near: {
+            type: 'object',
+            description: 'Find elements spatially near another element',
+            properties: {
+              selector: {
+                type: 'string',
+                description: 'Reference selector to search near',
+              },
+              direction: {
+                type: 'string',
+                description: 'Spatial direction filter',
+                enum: ['above', 'below', 'left', 'right', 'inside'],
+              },
+            },
+            required: ['selector'],
+          },
+          strict_stability: {
+            type: 'boolean',
+            description: 'Only return high-stability selectors (ID, data-testid, aria-label)',
+            default: false,
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum candidates to return (default: 3)',
+            default: 3,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+      },
+    },
   },
   connection: {
     chromeListConnections: {
@@ -368,6 +446,7 @@ const legacyTools: Tool[] = [
   { name: 'fill_element', ...toolMetadata.dom.fillElement },
   { name: 'navigate', ...toolMetadata.dom.navigate },
   { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
+  { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
   // Debugger Tools
   {
     name: 'debugger_enable',
@@ -652,6 +731,7 @@ const smartTools: Tool[] = [
   { name: 'fill_element', ...toolMetadata.dom.fillElement },
   { name: 'navigate', ...toolMetadata.dom.navigate },
   { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
+  { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
   // Debugger Tools (consolidated)
   {
     name: 'enable_debug_tools',
@@ -976,6 +1056,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         case 'get_console_logs':
           return await getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]);
 
+        case 'inspect_element':
+          return await inspectElement(args as Parameters<typeof inspectElement>[0]);
+
         // Debugger tools
         case 'debugger_enable':
           return await debuggerEnable(args as Parameters<typeof debuggerEnable>[0]);
@@ -1067,6 +1150,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         case 'get_console_logs':
           return await getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]);
+
+        case 'inspect_element':
+          return await inspectElement(args as Parameters<typeof inspectElement>[0]);
 
         // Debugger tools (consolidated)
         case 'enable_debug_tools':

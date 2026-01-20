@@ -281,4 +281,73 @@ export interface SelectorSuggestion {
     /** Reason for the suggestion */
     reason: string;
 }
+/**
+ * Selector candidate for inspect_element
+ */
+export interface SelectorCandidate {
+    /** The generated CSS selector */
+    selector: string;
+    /** Stability score (0-100) - higher is more stable */
+    stability: number;
+    /** Strategy used to generate selector (e.g., "ID", "data-testid", "class") */
+    strategy: string;
+    /** Number of elements matching this selector on the page */
+    count: number;
+    /** Element tag name */
+    tag: string;
+    /** Element text content (truncated) */
+    text: string;
+    /** Whether element is visible */
+    visible: boolean;
+    /** Element HTML (opening tag only) */
+    html: string;
+}
+/**
+ * Result of inspect_element operation
+ */
+export interface InspectElementResult {
+    /** Number of candidates found */
+    candidatesFound: number;
+    /** Ranked selector candidates */
+    candidates: SelectorCandidate[];
+    /** Query description (if provided) */
+    query?: string;
+}
+/**
+ * Arguments for inspect_element tool
+ */
+export interface InspectElementArgs {
+    /** Natural language description of element (e.g., "the login button") */
+    description?: string;
+    /** Text content to match (exact substring) */
+    text_contains?: string;
+    /** Spatial matching - find elements near another */
+    near?: {
+        /** Reference selector */
+        selector: string;
+        /** Direction filter (optional) */
+        direction?: 'above' | 'below' | 'left' | 'right' | 'inside';
+    };
+    /** Attribute filters */
+    attributes?: {
+        /** Role attribute */
+        role?: string;
+        /** ARIA label */
+        aria_label?: string;
+        /** Data-testid attribute (supports wildcard *) */
+        data_testid?: string;
+        /** Placeholder text */
+        placeholder?: string;
+        /** Input type */
+        type?: string;
+    };
+    /** Filter by tag name (button, input, a, etc.) */
+    tag?: string;
+    /** Only return high-stability selectors (ID, data-testid) */
+    strict_stability?: boolean;
+    /** Maximum candidates to return (default: 3) */
+    limit?: number;
+    /** Chrome connection to use */
+    connection_id?: string;
+}
 //# sourceMappingURL=types.d.ts.map
