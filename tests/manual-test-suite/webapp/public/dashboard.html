@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webapp 2: Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <a href="index.html">← Back to Home</a>
+        <h1>Interactive Dashboard</h1>
+
+        <!-- S2.1: DOM Diffing -->
+        <section class="card mt-20">
+            <h2>State Toggles</h2>
+            <button id="toggle-btn" class="btn">Toggle Details</button>
+            <div id="details-panel" class="hidden mt-20" style="background: #e1f5fe; padding: 10px;">
+                <p>Here are the extra details that appeared.</p>
+                <ul>
+                    <li>Detail Item 1</li>
+                    <li>Detail Item 2</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- S3.2: Console Logging -->
+        <section class="card mt-20">
+            <h2>Console Activity</h2>
+            <div style="display: flex; gap: 10px;">
+                <button id="log-btn" class="btn" style="background: #2196f3;">Trigger Log</button>
+                <button id="warn-btn" class="btn" style="background: #ff9800;">Trigger Warn</button>
+                <button id="error-btn" class="btn" style="background: #f44336;">Trigger Error</button>
+            </div>
+        </section>
+
+        <!-- S6.2: Live Updates -->
+        <section class="card mt-20">
+            <h2>Live Metrics</h2>
+            <div style="display: flex; justify-content: space-between;">
+                <div>
+                    <h3>Active Users</h3>
+                    <p id="metric-users" style="font-size: 2em; font-weight: bold;">1024</p>
+                </div>
+                <div>
+                    <h3>Server Load</h3>
+                    <p id="metric-load" style="font-size: 2em; font-weight: bold;">45%</p>
+                </div>
+                <div>
+                    <h3>Last Update</h3>
+                    <p id="last-update">Waiting...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- S6.1: Large DOM -->
+        <section class="card mt-20">
+            <h2>Data Grid (500 Rows)</h2>
+            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #eee;">
+                            <th style="padding: 10px; text-align: left;">ID</th>
+                            <th style="padding: 10px; text-align: left;">Name</th>
+                            <th style="padding: 10px; text-align: left;">Status</th>
+                            <th style="padding: 10px; text-align: left;">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-grid-body">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // S2.1 Toggle
+        const toggleBtn = document.getElementById('toggle-btn');
+        const detailsPanel = document.getElementById('details-panel');
+        toggleBtn.addEventListener('click', () => {
+            const isHidden = detailsPanel.classList.toggle('hidden');
+            toggleBtn.textContent = isHidden ? 'Toggle Details' : 'Hide Details';
+        });
+
+        // S3.2 Console
+        document.getElementById('log-btn').addEventListener('click', () => {
+            console.log('User triggered a log event at ' + new Date().toISOString());
+        });
+        document.getElementById('warn-btn').addEventListener('click', () => {
+            console.warn('Warning: Resource usage is high (Simulated)');
+        });
+        document.getElementById('error-btn').addEventListener('click', () => {
+            console.error('Error: Failed to connect to imaginary service');
+        });
+
+        // S6.2 Live Updates
+        setInterval(() => {
+            document.getElementById('metric-users').textContent = Math.floor(1000 + Math.random() * 500);
+            document.getElementById('metric-load').textContent = Math.floor(30 + Math.random() * 40) + '%';
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        }, 2000);
+
+        // S6.1 Large DOM Generation
+        const tbody = document.getElementById('data-grid-body');
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 1; i <= 500; i++) {
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #eee';
+
+            tr.innerHTML = `
+                <td style="padding: 8px;">#APP-${i.toString().padStart(4, '0')}</td>
+                <td style="padding: 8px;">Service Node ${i}</td>
+                <td style="padding: 8px;">${Math.random() > 0.8 ? 'Pending' : 'Active'}</td>
+                <td style="padding: 8px;">$${(Math.random() * 1000).toFixed(2)}</td>
+            `;
+            fragment.appendChild(tr);
+        }
+        tbody.appendChild(fragment);
+    </script>
+</body>
+
+</html>

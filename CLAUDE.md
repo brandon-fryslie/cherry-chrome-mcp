@@ -14,6 +14,7 @@ Cherry Chrome MCP is a TypeScript MCP server for Chrome automation with CSS sele
 - Multi-instance Chrome connection support
 - Full JavaScript debugger via CDP (breakpoints, stepping, evaluation)
 - Smart result size analysis (rejects oversized results with suggestions)
+- **Console log pattern compression** with similarity matching (see below)
 - **Feature toggle:** Legacy vs Smart consolidated tools (see `FEATURE-TOGGLE.md`)
 
 ## Common Commands
@@ -224,6 +225,65 @@ Each element returned by `query_elements` includes:
 - Interactive detection walks all descendants (not just direct children)
 - HTML extraction uses `cloneNode(false)` to get opening tag only
 - All three new fields are generated in browser context for efficiency
+
+### Console Log Pattern Compression
+
+The `get_console_logs` tool automatically detects and compresses repeating patterns in console output using a greedy single-pass algorithm with **similarity matching**.
+
+**Compression Types:**
+
+```
+Consecutive:  A A A → A x3
+Alternating:  A B A B → (A B) x2
+Complex:      A B C D A B C D → (A B C D) x2
+Similar:      "Error: timeout 123ms" + "Error: timeout 456ms" → grouped
+```
+
+**Similarity Matching:**
+
+Messages are considered similar if they match after normalization:
+- Numbers normalized: `timeout 123ms` → `timeout <n>ms`
+- UUIDs normalized: `user-550e8400-...` → `user-<uuid>`
+- Hex values normalized: `0xdeadbeef` → `<hex>`
+- Timestamps normalized: `2024-01-21T10:30:45Z` → `<ts>`
+- Whitespace collapsed
+
+**Similarity Thresholds** (Dice coefficient on character bigrams):
+- Same location (URL:line): 0.85 similarity required
+- Different locations: 0.96 similarity required
+- No location info: 0.92 similarity required
+
+**Configuration** (in `src/tools/console-pattern.ts`):
+
+```typescript
+const DEFAULTS = {
+  minTextSimilarity: 0.92,
+  minTextSimilaritySameLocation: 0.85,
+  minTextSimilarityDifferentLocation: 0.96,
+  normalizeNumbers: true,
+  normalizeHex: true,
+  normalizeUUID: true,
+  normalizeTimestamps: true,
+  requireSameLevel: true,  // error != warning
+};
+```
+
+**Performance:**
+- Complexity: O(n√n) where n = number of logs
+- Max pattern length: √n, capped at 20
+- Compression shown when >20% reduction achieved
+
+**Output Format:**
+
+```
+[Pattern compression: 50 → 12 lines (76% reduction)]
+
+[10:30:45.123] [LOG] Message A x3
+┌─ Pattern repeats x2 ─────
+│ [10:30:46.000] [LOG] Message B
+│ [10:30:46.100] [ERROR] Error X
+└─────────────────────────────────
+```
 
 ### CDP Debugger Access
 

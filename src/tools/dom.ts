@@ -12,6 +12,7 @@ import {
 } from '../response.js';
 import type { QueryElementsResult, DomActionResult } from '../types.js';
 import { gatherNavigateContext, gatherActionContext, gatherZeroResultSuggestions, captureDOMSnapshot } from './context.js';
+import { compressLogs, formatCompressedLogs } from './console-pattern.js';
 
 /**
  * Format time difference as human-readable string
@@ -653,11 +654,17 @@ export async function getConsoleLogs(args: {
     );
     output.push('');
 
-    for (const log of recentLogs) {
-      const timestamp = new Date(log.timestamp).toISOString().split('T')[1].slice(0, 12);
-      const location = log.url ? ` (${log.url}${log.lineNumber ? `:${log.lineNumber}` : ''})` : '';
-      output.push(`[${timestamp}] [${log.level.toUpperCase()}] ${log.text}${location}`);
+    // Compress logs using pattern detection
+    const compressionResult = compressLogs(recentLogs);
+    const formattedLogs = formatCompressedLogs(compressionResult);
+
+    // Show compression stats if meaningful compression occurred
+    if (compressionResult.compressionRatio > 0.2) {
+      output.push(`[Pattern compression: ${recentLogs.length} → ${compressionResult.compressedCount} lines (${Math.round(compressionResult.compressionRatio * 100)}% reduction)]`);
+      output.push('');
     }
+
+    output.push(...formattedLogs);
 
     return successResponse(output.join('\n'));
   } catch (error) {

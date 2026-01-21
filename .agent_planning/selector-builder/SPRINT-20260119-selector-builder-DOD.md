@@ -2,57 +2,57 @@
 
 ## Acceptance Criteria
 
-### AC1: Types Defined
-- [ ] `SelectorCandidate` type with selector, stability score, strategy, count
-- [ ] `InspectElementResult` type with candidates array and element details
-- [ ] `InspectElementArgs` type for function parameters
+### AC1: Types Defined ✅
+- [x] `SelectorCandidate` type with selector, stability score, strategy, count
+- [x] `InspectElementResult` type with candidates array and element details
+- [x] `InspectElementArgs` type for function parameters
 
-### AC2: Core Discovery Function
-- [ ] `inspectElement(args)` function in `src/tools/inspect.ts`
-- [ ] Returns ranked selector candidates (default limit: 3)
-- [ ] Uses `browserManager.getPageOrThrow()` for connection validation
-- [ ] Handles errors gracefully with `errorResponse()`
+### AC2: Core Discovery Function ✅
+- [x] `inspectElement(args)` function in `src/tools/inspect.ts`
+- [x] Returns ranked selector candidates (default limit: 3)
+- [x] Uses `browserManager.getPageOrThrow()` for connection validation
+- [x] Handles errors gracefully with `errorResponse()`
 
-### AC3: Selector Generation
-- [ ] `generateBestSelector(element)` function
-- [ ] Prioritizes: ID > data-testid > aria-label > unique class > tag.class > nth-child
-- [ ] Returns most stable selector available for element
-- [ ] Stability score reflects selector type
+### AC3: Selector Generation ✅
+- [x] `generateBestSelector(element)` function
+- [x] Prioritizes: ID > data-testid > aria-label > unique class > tag.class > nth-child
+- [x] Returns most stable selector available for element
+- [x] Stability score reflects selector type
 
-### AC4: Element Discovery
-- [ ] `discoverElements()` finds elements matching criteria
-- [ ] Supports `description` - keyword matching against text content
-- [ ] Supports `text_contains` - exact substring match
-- [ ] Supports `tag` filter (button, input, a, etc.)
+### AC4: Element Discovery ✅
+- [x] `discoverElements()` finds elements matching criteria
+- [x] Supports `description` - keyword matching against text content
+- [x] Supports `text_contains` - exact substring match
+- [x] Supports `tag` filter (button, input, a, etc.)
 
-### AC5: Attribute Matching
-- [ ] Supports `attributes.role` filter
-- [ ] Supports `attributes.aria_label` filter
-- [ ] Supports `attributes.data_testid` filter (with wildcard *)
-- [ ] Supports `attributes.placeholder` filter
-- [ ] Supports `attributes.type` filter
+### AC5: Attribute Matching ✅
+- [x] Supports `attributes.role` filter
+- [x] Supports `attributes.aria_label` filter
+- [x] Supports `attributes.data_testid` filter (with wildcard *)
+- [x] Supports `attributes.placeholder` filter
+- [x] Supports `attributes.type` filter
 
-### AC6: Spatial Matching (Optional Enhancement)
-- [ ] Supports `near.selector` - find elements near reference
-- [ ] Supports `near.direction` - filter by relative position
-- [ ] Falls back gracefully if reference element not found
+### AC6: Spatial Matching (Optional Enhancement) ✅
+- [x] Supports `near.selector` - find elements near reference
+- [x] Supports `near.direction` - filter by relative position
+- [x] Falls back gracefully if reference element not found
 
-### AC7: Output Formatting
-- [ ] `formatInspectResult()` produces clear, ranked output
-- [ ] Shows stability score for each candidate
-- [ ] Shows strategy used (ID, data-testid, class, etc.)
-- [ ] Shows element details (tag, text, visible)
-- [ ] Recommends highest-stability selector
+### AC7: Output Formatting ✅
+- [x] `formatInspectResult()` produces clear, ranked output
+- [x] Shows stability score for each candidate
+- [x] Shows strategy used (ID, data-testid, class, etc.)
+- [x] Shows element details (tag, text, visible)
+- [x] Recommends highest-stability selector
 
-### AC8: Tool Registration
-- [ ] Tool registered in `src/index.ts`
-- [ ] Tool definition includes clear description
-- [ ] Input schema defines all parameters with descriptions
+### AC8: Tool Registration ✅
+- [x] Tool registered in `src/index.ts`
+- [x] Tool definition includes clear description
+- [x] Input schema defines all parameters with descriptions
 
-### AC9: Build & Tests
-- [ ] `npm run build` passes
-- [ ] No TypeScript errors
-- [ ] Existing tests still pass
+### AC9: Build & Tests ✅
+- [x] `npm run build` passes
+- [x] No TypeScript errors
+- [x] Existing tests still pass
 
 ## Example Output
 
@@ -79,7 +79,7 @@ Use the RECOMMENDED selector for best reliability.
 
 ## Verification
 
-1. Build: `npm run build`
+1. Build: `npm run build` ✅
 2. Connect to a test page with MCP Inspector
 3. Run: `inspect_element({ description: "login" })`
 4. Verify candidates returned with stability scores
@@ -88,6 +88,17 @@ Use the RECOMMENDED selector for best reliability.
 
 ## Scope Notes
 
-- AC6 (Spatial Matching) is optional for initial release
+- AC6 (Spatial Matching) is optional for initial release - IMPLEMENTED ✅
 - XPath support is out of scope
 - Visual/screenshot-based discovery is out of scope
+
+## Completion Notes
+
+All 9 acceptance criteria have been completed successfully:
+- Types defined in `src/types.ts`
+- Core implementation in `src/tools/inspect.ts`
+- Tool registered in both legacy and smart modes
+- Build passes with no errors
+- Spatial matching implemented (AC6 bonus feature)
+
+Commit: feat(selector): implement inspect_element tool

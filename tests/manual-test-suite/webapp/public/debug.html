@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webapp 3: Debugger</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+        // Defined globally for easy breakpoint access
+
+        // S4.1: Breakpoint Workflow
+        function calculateFactorial() {
+            const inputVal = parseInt(document.getElementById('calc-input').value);
+            let result = 1;
+
+            // Set breakpoint here to inspect 'result' and 'i'
+            for (let i = 1; i <= inputVal; i++) {
+                result = result * i;
+            }
+
+            document.getElementById('calc-result').textContent = result;
+            return result;
+        }
+
+        // S4.2: Step Through Logic
+        function processValue(val) {
+            let status = 'Unknown';
+
+            // Step through this logic
+            if (val < 0) {
+                status = 'Negative';
+            } else if (val === 0) {
+                status = 'Zero';
+            } else {
+                if (val % 2 === 0) {
+                    status = 'Positive Even';
+                } else {
+                    status = 'Positive Odd';
+                }
+            }
+
+            return status;
+        }
+
+        function triggerStepLogic() {
+            const val = Math.floor(Math.random() * 20) - 5; // -5 to 14
+            const result = processValue(val);
+            document.getElementById('step-result').textContent = `Value: ${val}, Status: ${result}`;
+        }
+
+        // S4.3: Async Debugging
+        async function fetchData() {
+            document.getElementById('async-result').textContent = 'Loading...';
+
+            try {
+                // Breakpoint here to step over await
+                const data = await mockApiCall();
+
+                // Inspect 'data' here
+                const processed = data.toUpperCase();
+
+                document.getElementById('async-result').textContent = processed;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function mockApiCall() {
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    resolve("received_data_payload_123");
+                }, 1000);
+            });
+        }
+
+        // S3.1: Error Triage
+        function triggerError() {
+            const obj = undefined;
+            // This will throw TypeError: Cannot read properties of undefined
+            console.log(obj.someProperty);
+        }
+    </script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="index.html">← Back to Home</a>
+        <h1>Debugger Scenarios</h1>
+
+        <!-- S4.1: Breakpoints -->
+        <section class="card mt-20">
+            <h2>Breakpoints & Variables</h2>
+            <p>Set a breakpoint in <code>calculateFactorial</code> (line ~13).</p>
+            <div class="form-group">
+                <input type="number" id="calc-input" value="5" style="width: 100px;">
+                <button onclick="calculateFactorial()" class="btn">Calculate Factorial</button>
+            </div>
+            <p>Result: <span id="calc-result">-</span></p>
+        </section>
+
+        <!-- S4.2: Stepping -->
+        <section class="card mt-20">
+            <h2>Step Navigation</h2>
+            <p>Set a breakpoint in <code>processValue</code> (line ~24) and step through logic.</p>
+            <button onclick="triggerStepLogic()" class="btn">Run Conditional Logic</button>
+            <p id="step-result" class="mt-20 code">-</p>
+        </section>
+
+        <!-- S4.3: Async -->
+        <section class="card mt-20">
+            <h2>Async Debugging</h2>
+            <p>Set breakpoint in <code>fetchData</code> and inspect variables after await.</p>
+            <button onclick="fetchData()" class="btn">Trigger Async Fetch</button>
+            <p>Result: <span id="async-result">-</span></p>
+        </section>
+
+        <!-- S3.1: Errors -->
+        <section class="card mt-20">
+            <h2>Error Handling</h2>
+            <p>Click to throw an Uncaught TypeError in the console.</p>
+            <button onclick="triggerError()" class="btn" style="background: #d32f2f;">Throw Error</button>
+        </section>
+
+        <div class="debug-area mt-20">
+            <h3>Instructions</h3>
+            <p>Open DevTools (Cmd+Option+I), go to Sources tab, open this file (debug.html), and set breakpoints on the
+                line numbers indicated above.</p>
+        </div>
+    </div>
+</body>
+
+</html>

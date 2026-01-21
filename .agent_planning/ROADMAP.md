@@ -1,6 +1,6 @@
 # Cherry Chrome MCP Roadmap
 
-Last updated: 2026-01-18
+Last updated: 2026-01-19
 
 ## Phase 1: Usability Improvements [ACTIVE]
 
@@ -73,7 +73,7 @@ Goal: Reduce wasted agent turns through better feedback and guidance
 
 ### Topics
 
-#### smart-element-suggestions [PLANNED]
+#### smart-element-suggestions [COMPLETE]
 
 **Description**: When `query_elements` returns 0 results, analyze the page and suggest alternative selectors.
 
@@ -94,7 +94,7 @@ Page structure: 12 buttons, 5 inputs, 8 links
 
 ---
 
-#### page-state-diffing [PLANNED]
+#### page-state-diffing [COMPLETE]
 
 **Description**: Track DOM changes after actions (click, fill, navigate). Show what was added/removed/changed.
 
@@ -112,7 +112,7 @@ Changed: #status text "Pending" → "Complete"
 
 ---
 
-#### selector-builder [PLANNED]
+#### selector-builder [COMPLETE]
 
 **Description**: Interactive element discovery using natural language and spatial hints.
 
