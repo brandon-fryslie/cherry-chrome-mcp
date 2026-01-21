@@ -278,12 +278,17 @@ const DEFAULTS = {
 ```
 [Pattern compression: 50 → 12 lines (76% reduction)]
 
-[10:30:45.123] [LOG] Message A x3
-┌─ Pattern repeats x2 ─────
-│ [10:30:46.000] [LOG] Message B
-│ [10:30:46.100] [ERROR] Error X
+[10:30:45.123] [LOG] Error: timeout <n>ms x5
+    Variations: 123, 456, 789, 234 +1 more
+
+┌─ Pattern repeats x3 ─────
+│ [10:30:46.000] [LOG] User <uuid> logged in
+│ [10:30:46.100] [LOG] Request <n> completed
+│ Variations: 550e8400-e29b-41d4-a716-446655440000, ..., 42, 43, 44 +3 more
 └─────────────────────────────────
 ```
+
+Variations show what was normalized (numbers, UUIDs, hex, timestamps) - up to 4 examples.
 
 ### CDP Debugger Access
 

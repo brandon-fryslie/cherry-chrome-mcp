@@ -18,6 +18,7 @@ export interface CompressedPattern {
     pattern: ConsoleMessage[];
     count: number;
     startIndex: number;
+    variations?: string[][][];
 }
 export interface CompressionResult {
     compressed: Array<CompressedPattern | ConsoleMessage>;

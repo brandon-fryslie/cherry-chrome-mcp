@@ -55,8 +55,9 @@ function normalizeText(text) {
         s = s.replace(/\b1\d{12,13}\b/g, '<ts>');
     }
     if (DEFAULTS.normalizeNumbers) {
-        // replace standalone integers/decimals (but keep small ones if you want—this is the simple version)
-        s = s.replace(/\b\d+(?:\.\d+)?\b/g, '<n>');
+        // replace standalone integers/decimals
+        // Don't require trailing word boundary - allows matching "123ms", "42px", etc.
+        s = s.replace(/\b\d+(?:\.\d+)?/g, '<n>');
     }
     return s;
 }
@@ -127,6 +128,45 @@ function locationKey(l) {
     // lineNumber often missing; that's fine
     return l.lineNumber ? `${l.url}:${l.lineNumber}` : l.url;
 }
+/**
+ * Extract what differs between the raw text and its normalized form.
+ * Returns array of substituted values (numbers, UUIDs, etc.)
+ */
+function extractVariations(text) {
+    const variations = [];
+    // Extract in the same order as normalization
+    if (DEFAULTS.normalizeUUID) {
+        const uuids = text.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi);
+        if (uuids)
+            variations.push(...uuids);
+    }
+    if (DEFAULTS.normalizeHex) {
+        const hexWithPrefix = text.match(/\b0x[0-9a-f]+\b/gi);
+        if (hexWithPrefix)
+            variations.push(...hexWithPrefix);
+        const hexBlobs = text.match(/\b[0-9a-f]{16,}\b/gi);
+        if (hexBlobs)
+            variations.push(...hexBlobs.filter(h => !h.startsWith('0x')));
+    }
+    if (DEFAULTS.normalizeTimestamps) {
+        const isoTimestamps = text.match(/\b\d{4}-\d{2}-\d{2}[t ]\d{2}:\d{2}:\d{2}(?:\.\d+)?z?\b/gi);
+        if (isoTimestamps)
+            variations.push(...isoTimestamps);
+        const epochMs = text.match(/\b1\d{12,13}\b/g);
+        if (epochMs)
+            variations.push(...epochMs);
+    }
+    if (DEFAULTS.normalizeNumbers) {
+        // Get all numbers not already captured above
+        const allNumbers = text.match(/\b\d+(?:\.\d+)?/g);
+        if (allNumbers) {
+            // Filter out timestamps we already captured
+            const filtered = allNumbers.filter(n => !n.match(/^1\d{12,13}$/));
+            variations.push(...filtered);
+        }
+    }
+    return variations;
+}
 // ------------------------
 // Pattern detection machinery
 // ------------------------
@@ -143,8 +183,15 @@ function countRepeats(logs, startIndex, patternLength) {
     const pattern = logs.slice(startIndex, startIndex + patternLength);
     let count = 1;
     let pos = startIndex + patternLength;
+    const variations = [];
+    // Collect variations from first occurrence
+    const firstVariations = pattern.map(log => extractVariations(log.text));
+    variations.push(firstVariations);
     while (pos + patternLength <= logs.length) {
         if (patternMatchesAt(logs, pos, pattern)) {
+            // Collect variations from this repetition
+            const repVariations = logs.slice(pos, pos + patternLength).map(log => extractVariations(log.text));
+            variations.push(repVariations);
             count++;
             pos += patternLength;
         }
@@ -152,7 +199,7 @@ function countRepeats(logs, startIndex, patternLength) {
             break;
         }
     }
-    return count;
+    return { count, variations };
 }
 /**
  * Compress console logs by detecting repeating patterns
@@ -184,15 +231,17 @@ export function compressLogs(logs) {
         let bestRepeatCount = 1;
         let bestScore = 0;
         // Try each pattern length, prefer longer patterns
+        let bestVariations = [];
         for (let patternLen = 1; patternLen <= maxPatternLength; patternLen++) {
-            const repeatCount = countRepeats(logs, pos, patternLen);
+            const result = countRepeats(logs, pos, patternLen);
             // Score: patternLength * repeatCount (favor longer patterns)
             // Only consider if it repeats at least twice
-            const score = patternLen * repeatCount;
-            if (repeatCount >= 2 && score > bestScore) {
+            const score = patternLen * result.count;
+            if (result.count >= 2 && score > bestScore) {
                 bestScore = score;
                 bestPatternLength = patternLen;
-                bestRepeatCount = repeatCount;
+                bestRepeatCount = result.count;
+                bestVariations = result.variations;
             }
         }
         // Commit to best pattern found
@@ -202,7 +251,8 @@ export function compressLogs(logs) {
             compressed.push({
                 pattern,
                 count: bestRepeatCount,
-                startIndex: pos
+                startIndex: pos,
+                variations: bestVariations
             });
             pos += bestPatternLength * bestRepeatCount;
         }
@@ -230,6 +280,27 @@ export function compressLogs(logs) {
     };
 }
 /**
+ * Format variations for display (capped at reasonable size)
+ *
+ * Example output:
+ *   Variations: 123, 456, 789, abc123 +5 more
+ */
+function formatVariations(variations, maxShow = 4) {
+    if (!variations || variations.length === 0)
+        return [];
+    // Flatten: [repetition][logInPattern][variation] → [variation]
+    const allVars = variations.flat(2).filter(v => v.length > 0);
+    if (allVars.length === 0)
+        return [];
+    // Deduplicate and limit
+    const unique = [...new Set(allVars)];
+    const shown = unique.slice(0, maxShow);
+    const remaining = unique.length - shown.length;
+    const formatted = [];
+    formatted.push(`    Variations: ${shown.join(', ')}${remaining > 0 ? ` +${remaining} more` : ''}`);
+    return formatted;
+}
+/**
  * Format compressed logs for display
  */
 export function formatCompressedLogs(result) {
@@ -244,6 +315,11 @@ export function formatCompressedLogs(result) {
                 const timestamp = new Date(log.timestamp).toISOString().split('T')[1].slice(0, 12);
                 const location = log.url ? ` (${log.url}${log.lineNumber ? `:${log.lineNumber}` : ''})` : '';
                 output.push(`[${timestamp}] [${log.level.toUpperCase()}] ${log.text}${location} x${pattern.count}`);
+                // Show variations if any
+                if (pattern.variations) {
+                    const varLines = formatVariations(pattern.variations);
+                    output.push(...varLines);
+                }
             }
             else {
                 // Complex pattern: (A B C) x2
@@ -252,6 +328,13 @@ export function formatCompressedLogs(result) {
                     const timestamp = new Date(log.timestamp).toISOString().split('T')[1].slice(0, 12);
                     const location = log.url ? ` (${log.url}${log.lineNumber ? `:${log.lineNumber}` : ''})` : '';
                     output.push(`│ [${timestamp}] [${log.level.toUpperCase()}] ${log.text}${location}`);
+                }
+                // Show variations if any
+                if (pattern.variations) {
+                    const varLines = formatVariations(pattern.variations);
+                    if (varLines.length > 0) {
+                        output.push(`│ ${varLines[0].trim()}`);
+                    }
                 }
                 output.push(`└─────────────────────────────────`);
             }
