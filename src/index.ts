@@ -28,6 +28,7 @@ import {
   listTargets,
   switchTarget,
   chrome,
+  connect,
   target,
   enableDebugTools,
   queryElements,
@@ -193,7 +194,7 @@ const toolMetadata = {
     },
     getConsoleLogs: {
       description:
-        'Get console log messages from the browser. Messages are captured automatically.',
+        'Get console log messages from the browser. Messages are captured automatically. Use expand_errors to include full stack traces for error messages.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -206,6 +207,11 @@ const toolMetadata = {
             type: 'number',
             description: 'Maximum number of messages to return (most recent)',
             default: 3,
+          },
+          expand_errors: {
+            type: 'boolean',
+            description: 'Include full stack traces for error messages (default: false)',
+            default: false,
           },
           connection_id: {
             type: 'string',
@@ -646,47 +652,40 @@ const legacyTools: Tool[] = [
 const smartTools: Tool[] = [
   // Chrome Connection Management (consolidated)
   {
-    name: 'chrome',
+    name: 'connect',
     description:
-      'Connect or launch Chrome with remote debugging. Consolidates chrome_connect and chrome_launch into a single action-based tool.',
+      'Connect to Chrome and navigate to a URL. If port is provided, connects to existing Chrome on that port (verifies something is running first). If port is omitted, launches a new Chrome instance on a random port (15000-18000). Always navigates to the URL and returns page context.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: {
+        url: {
           type: 'string',
-          description: '"connect" to existing Chrome or "launch" new instance',
-          enum: ['connect', 'launch'],
+          description: 'URL to navigate to after connecting',
         },
         port: {
           type: 'number',
-          description: 'Chrome remote debugging port (for connect) or debug port (for launch)',
-          default: 9222,
+          description: 'Chrome remote debugging port. If provided, connects to existing Chrome. If omitted, launches new Chrome on random port.',
         },
         connection_id: {
           type: 'string',
           description: 'Unique identifier for this connection',
           default: 'default',
         },
-        host: {
-          type: 'string',
-          description: 'Chrome host (for connect only)',
-          default: 'localhost',
-        },
         headless: {
           type: 'boolean',
-          description: 'Run in headless mode (for launch only)',
-          default: false,
+          description: 'Run in headless mode (only when launching new Chrome)',
+          default: true,
         },
         user_data_dir: {
           type: 'string',
-          description: 'Custom user data directory path (for launch only)',
+          description: 'Custom user data directory path (only when launching new Chrome)',
         },
         extra_args: {
           type: 'string',
-          description: 'Additional Chrome flags (for launch only)',
+          description: 'Additional Chrome flags (only when launching new Chrome)',
         },
       },
-      required: ['action'],
+      required: ['url'],
     },
   },
   // Connection tools (from shared metadata)
@@ -1116,8 +1115,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Smart consolidated tools routing
       switch (name) {
         // Chrome connection tools
-        case 'chrome':
-          return await chrome(args as Parameters<typeof chrome>[0]);
+        case 'connect':
+          return await connect(args as Parameters<typeof connect>[0]);
 
         case 'chrome_list_connections':
           return await chromeListConnections();

@@ -3,8 +3,43 @@
  * Ported from Python chrome_connect, chrome_launch, etc.
  */
 
+import { createConnection } from 'net';
 import { browserManager } from '../browser.js';
 import { successResponse, errorResponse } from '../response.js';
+import { gatherNavigateContext } from './context.js';
+
+/**
+ * Generate a random port in the 15000-18000 range
+ */
+function getRandomPort(): number {
+  return Math.floor(Math.random() * (18000 - 15000 + 1)) + 15000;
+}
+
+/**
+ * Check if something is listening on a given port
+ * Returns true if port is in use, false if available
+ */
+async function isPortInUse(port: number, host = 'localhost'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ port, host });
+
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+
+    socket.once('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+
+    // Timeout after 1 second
+    socket.setTimeout(1000, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
 
 /**
  * Connect to a Chrome instance running with remote debugging enabled.
@@ -69,9 +104,129 @@ export async function chromeLaunch(args: {
 }
 
 /**
- * CONSOLIDATED: chrome - Connect or launch Chrome
+ * CONSOLIDATED: connect - Smart Chrome connection
  *
- * Replaces chrome_connect and chrome_launch with a single tool.
+ * Behavior depends on whether port is provided:
+ * - If port IS provided: verify something is running on that port and connect to it
+ * - If port is NOT provided: launch a new Chrome on a random port (15000-18000),
+ *   navigate to the required URL, and return useful page context
+ *
+ * This replaces both chrome_connect and chrome_launch with unified, smarter behavior.
+ */
+export async function connect(args: {
+  url: string;
+  port?: number;
+  connection_id?: string;
+  headless?: boolean;
+  user_data_dir?: string;
+  extra_args?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const connectionId = args.connection_id ?? 'default';
+  const headless = args.headless ?? true;
+
+  // Case 1: Port explicitly provided - try to connect to existing Chrome
+  if (args.port !== undefined) {
+    const port = args.port;
+    const host = 'localhost';
+
+    console.error(`[cherry-chrome] Port ${port} specified, checking if Chrome is running...`);
+
+    // Check if something is actually running on that port
+    const portInUse = await isPortInUse(port, host);
+
+    if (!portInUse) {
+      return errorResponse(
+        `Nothing is running on port ${port}.\n\n` +
+        `To connect to an existing Chrome instance, first start Chrome with:\n` +
+        `  chrome --remote-debugging-port=${port}\n\n` +
+        `Or omit the port parameter to launch a new Chrome instance automatically.`
+      );
+    }
+
+    console.error(`[cherry-chrome] Port ${port} is in use, attempting to connect...`);
+
+    try {
+      const result = await browserManager.connect(connectionId, host, port);
+
+      if (result.startsWith('Error:')) {
+        return errorResponse(result);
+      }
+
+      // Now navigate to the URL
+      const page = browserManager.getPage(connectionId);
+      if (!page) {
+        return errorResponse('Connected but failed to get page reference');
+      }
+
+      await page.goto(args.url, { waitUntil: 'networkidle2' });
+
+      // Gather context about the page
+      const context = await gatherNavigateContext(page, connectionId);
+
+      const response = [
+        `Connected to Chrome at ${host}:${port} (ID: ${connectionId})`,
+        `Navigated to: ${args.url}`,
+        '',
+        context || '',
+      ].filter(Boolean).join('\n');
+
+      return successResponse(response);
+    } catch (error) {
+      console.error(`[cherry-chrome] Connection failed: ${error}`);
+      return errorResponse(
+        `Failed to connect to Chrome at ${host}:${port}: ${error}\n\n` +
+        `Make sure Chrome is running with remote debugging enabled:\n` +
+        `  chrome --remote-debugging-port=${port}`
+      );
+    }
+  }
+
+  // Case 2: No port provided - launch new Chrome on random port
+  const randomPort = getRandomPort();
+  console.error(`[cherry-chrome] No port specified, launching Chrome on random port ${randomPort}...`);
+
+  try {
+    const launchResult = await browserManager.launch(
+      randomPort,
+      connectionId,
+      headless,
+      args.user_data_dir,
+      args.extra_args
+    );
+
+    if (launchResult.startsWith('Error:')) {
+      return errorResponse(launchResult);
+    }
+
+    // Navigate to the URL
+    const page = browserManager.getPage(connectionId);
+    if (!page) {
+      return errorResponse('Launched Chrome but failed to get page reference');
+    }
+
+    await page.goto(args.url, { waitUntil: 'networkidle2' });
+
+    // Gather context about the page
+    const context = await gatherNavigateContext(page, connectionId);
+
+    const response = [
+      `Launched Chrome on port ${randomPort} (ID: ${connectionId})`,
+      `Navigated to: ${args.url}`,
+      '',
+      context || '',
+    ].filter(Boolean).join('\n');
+
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(`Error launching Chrome: ${error}`);
+  }
+}
+
+/**
+ * LEGACY: chrome - Connect or launch Chrome (action-based)
+ *
+ * This is the old action-based tool. Kept for backward compatibility
+ * but the new `connect` tool is preferred.
  */
 export async function chrome(args: {
   action: 'connect' | 'launch';

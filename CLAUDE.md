@@ -94,9 +94,33 @@ src/
 - Debugger (11): `debugger_enable`, `debugger_set_breakpoint`, `debugger_get_call_stack`, `debugger_evaluate_on_call_frame`, `debugger_step_over`, `debugger_step_into`, `debugger_step_out`, `debugger_resume`, `debugger_pause`, `debugger_remove_breakpoint`, `debugger_set_pause_on_exceptions`
 
 **Smart Mode (17 tools):**
-- Chrome Connection (5): `chrome` (consolidated), `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `target` (consolidated)
+- Chrome Connection (5): `connect` (smart launch/connect), `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `target` (consolidated)
 - DOM Interaction (5): Same as legacy mode
 - Debugger (7): `enable_debug_tools`, `breakpoint` (consolidated), `step` (consolidated), `execution` (consolidated), `call_stack`, `evaluate`, `pause_on_exceptions`
+
+### Smart Connect Tool
+
+The `connect` tool provides intelligent Chrome connection handling:
+
+```typescript
+// Launch new Chrome on random port (15000-18000) and navigate to URL
+connect({ url: 'https://example.com' })
+
+// Connect to existing Chrome on specific port (verifies port is in use first)
+connect({ url: 'https://example.com', port: 9222 })
+```
+
+**Behavior:**
+- **No port provided**: Launches new Chrome on a random port (15000-18000), navigates to URL, returns page context
+- **Port provided**: Checks if something is running on that port first. If yes, connects and navigates. If no, returns helpful error message
+
+**Parameters:**
+- `url` (required): URL to navigate to after connecting
+- `port` (optional): If provided, connects to existing Chrome. If omitted, launches new Chrome
+- `connection_id` (optional): Unique identifier for this connection (default: "default")
+- `headless` (optional): Run in headless mode when launching new Chrome
+- `user_data_dir` (optional): Custom user data directory when launching
+- `extra_args` (optional): Additional Chrome flags when launching
 
 ## Implementation Patterns
 

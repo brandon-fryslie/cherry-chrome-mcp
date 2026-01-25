@@ -16,6 +16,7 @@ export {
 // New consolidated chrome tools
 export {
   chrome,
+  connect,
   target,
   enableDebugTools,
 } from './chrome.js';
