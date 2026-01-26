@@ -13,11 +13,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { USE_LEGACY_TOOLS } from './config.js';
 import { browserManager } from './browser.js';
 import { createToolRegistry, type ToolHandler } from './toolRegistry.js';
+import type { ToolResult } from './types.js';
 
 // Import all tools (legacy and new consolidated)
 import {
@@ -911,6 +912,28 @@ function findTool(tools: Tool[], name: string): Tool {
 }
 
 /**
+ * Register a tool handler with automatic name deduplication.
+ * Reduces triple-name pattern to single name usage.
+ *
+ * @param handlers - The handler map to register into
+ * @param name - Tool name (appears once, not three times)
+ * @param tools - Tool definition array to search
+ * @param fn - Tool implementation function
+ */
+function addHandler<F extends (...args: any[]) => Promise<ToolResult>>(
+  handlers: Map<string, ToolHandler>,
+  name: string,
+  tools: Tool[],
+  fn: F
+): void {
+  handlers.set(name, {
+    name,
+    definition: findTool(tools, name),
+    invoke: async (args: unknown) => fn(args as Parameters<F>[0]),
+  });
+}
+
+/**
  * Create tool handlers based on feature toggle.
  *
  * Phase 2: Handler Mappings
@@ -926,240 +949,81 @@ function createToolHandlers(useLegacy: boolean): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
   const tools = useLegacy ? legacyTools : smartTools;
 
-  // Shared DOM tools (6 tools)
-  handlers.set('query_elements', {
-    name: 'query_elements',
-    definition: findTool(tools, 'query_elements'),
-    invoke: async (args: unknown) =>
-      queryElements(args as Parameters<typeof queryElements>[0]),
-  });
+  /**
+   * Shared DOM tools (6 tools)
+   *
+   * Element query, interaction, navigation, and console operations.
+   * Available in both legacy and smart modes.
+   *
+   * Tools: query_elements, click_element, fill_element, navigate,
+   *        get_console_logs, inspect_element
+   */
+  addHandler(handlers, 'query_elements', tools, queryElements);
+  addHandler(handlers, 'click_element', tools, clickElement);
+  addHandler(handlers, 'fill_element', tools, fillElement);
+  addHandler(handlers, 'navigate', tools, navigate);
+  addHandler(handlers, 'get_console_logs', tools, getConsoleLogs);
+  addHandler(handlers, 'inspect_element', tools, inspectElement);
 
-  handlers.set('click_element', {
-    name: 'click_element',
-    definition: findTool(tools, 'click_element'),
-    invoke: async (args: unknown) =>
-      clickElement(args as Parameters<typeof clickElement>[0]),
-  });
-
-  handlers.set('fill_element', {
-    name: 'fill_element',
-    definition: findTool(tools, 'fill_element'),
-    invoke: async (args: unknown) =>
-      fillElement(args as Parameters<typeof fillElement>[0]),
-  });
-
-  handlers.set('navigate', {
-    name: 'navigate',
-    definition: findTool(tools, 'navigate'),
-    invoke: async (args: unknown) =>
-      navigate(args as Parameters<typeof navigate>[0]),
-  });
-
-  handlers.set('get_console_logs', {
-    name: 'get_console_logs',
-    definition: findTool(tools, 'get_console_logs'),
-    invoke: async (args: unknown) =>
-      getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]),
-  });
-
-  handlers.set('inspect_element', {
-    name: 'inspect_element',
-    definition: findTool(tools, 'inspect_element'),
-    invoke: async (args: unknown) =>
-      inspectElement(args as Parameters<typeof inspectElement>[0]),
-  });
-
-  // Shared connection tools (3 tools)
-  handlers.set('chrome_list_connections', {
-    name: 'chrome_list_connections',
-    definition: findTool(tools, 'chrome_list_connections'),
-    invoke: async (args: unknown) => chromeListConnections(),
-  });
-
-  handlers.set('chrome_switch_connection', {
-    name: 'chrome_switch_connection',
-    definition: findTool(tools, 'chrome_switch_connection'),
-    invoke: async (args: unknown) =>
-      chromeSwitchConnection(args as Parameters<typeof chromeSwitchConnection>[0]),
-  });
-
-  handlers.set('chrome_disconnect', {
-    name: 'chrome_disconnect',
-    definition: findTool(tools, 'chrome_disconnect'),
-    invoke: async (args: unknown) =>
-      chromeDisconnect(args as Parameters<typeof chromeDisconnect>[0]),
-  });
+  /**
+   * Shared connection tools (3 tools)
+   *
+   * Chrome instance management operations available in both modes.
+   *
+   * Tools: chrome_list_connections, chrome_switch_connection, chrome_disconnect
+   */
+  addHandler(handlers, 'chrome_list_connections', tools, chromeListConnections);
+  addHandler(handlers, 'chrome_switch_connection', tools, chromeSwitchConnection);
+  addHandler(handlers, 'chrome_disconnect', tools, chromeDisconnect);
 
   if (useLegacy) {
-    // Legacy-specific tools (14 tools)
-    handlers.set('chrome_connect', {
-      name: 'chrome_connect',
-      definition: findTool(tools, 'chrome_connect'),
-      invoke: async (args: unknown) =>
-        chromeConnect(args as Parameters<typeof chromeConnect>[0]),
-    });
-
-    handlers.set('chrome_launch', {
-      name: 'chrome_launch',
-      definition: findTool(tools, 'chrome_launch'),
-      invoke: async (args: unknown) =>
-        chromeLaunch(args as Parameters<typeof chromeLaunch>[0]),
-    });
-
-    handlers.set('list_targets', {
-      name: 'list_targets',
-      definition: findTool(tools, 'list_targets'),
-      invoke: async (args: unknown) =>
-        listTargets(args as Parameters<typeof listTargets>[0]),
-    });
-
-    handlers.set('switch_target', {
-      name: 'switch_target',
-      definition: findTool(tools, 'switch_target'),
-      invoke: async (args: unknown) =>
-        switchTarget(args as Parameters<typeof switchTarget>[0]),
-    });
-
-    handlers.set('debugger_enable', {
-      name: 'debugger_enable',
-      definition: findTool(tools, 'debugger_enable'),
-      invoke: async (args: unknown) =>
-        debuggerEnable(args as Parameters<typeof debuggerEnable>[0]),
-    });
-
-    handlers.set('debugger_set_breakpoint', {
-      name: 'debugger_set_breakpoint',
-      definition: findTool(tools, 'debugger_set_breakpoint'),
-      invoke: async (args: unknown) =>
-        debuggerSetBreakpoint(args as Parameters<typeof debuggerSetBreakpoint>[0]),
-    });
-
-    handlers.set('debugger_get_call_stack', {
-      name: 'debugger_get_call_stack',
-      definition: findTool(tools, 'debugger_get_call_stack'),
-      invoke: async (args: unknown) =>
-        debuggerGetCallStack(args as Parameters<typeof debuggerGetCallStack>[0]),
-    });
-
-    handlers.set('debugger_evaluate_on_call_frame', {
-      name: 'debugger_evaluate_on_call_frame',
-      definition: findTool(tools, 'debugger_evaluate_on_call_frame'),
-      invoke: async (args: unknown) =>
-        debuggerEvaluateOnCallFrame(args as Parameters<typeof debuggerEvaluateOnCallFrame>[0]),
-    });
-
-    handlers.set('debugger_step_over', {
-      name: 'debugger_step_over',
-      definition: findTool(tools, 'debugger_step_over'),
-      invoke: async (args: unknown) =>
-        debuggerStepOver(args as Parameters<typeof debuggerStepOver>[0]),
-    });
-
-    handlers.set('debugger_step_into', {
-      name: 'debugger_step_into',
-      definition: findTool(tools, 'debugger_step_into'),
-      invoke: async (args: unknown) =>
-        debuggerStepInto(args as Parameters<typeof debuggerStepInto>[0]),
-    });
-
-    handlers.set('debugger_step_out', {
-      name: 'debugger_step_out',
-      definition: findTool(tools, 'debugger_step_out'),
-      invoke: async (args: unknown) =>
-        debuggerStepOut(args as Parameters<typeof debuggerStepOut>[0]),
-    });
-
-    handlers.set('debugger_resume', {
-      name: 'debugger_resume',
-      definition: findTool(tools, 'debugger_resume'),
-      invoke: async (args: unknown) =>
-        debuggerResume(args as Parameters<typeof debuggerResume>[0]),
-    });
-
-    handlers.set('debugger_pause', {
-      name: 'debugger_pause',
-      definition: findTool(tools, 'debugger_pause'),
-      invoke: async (args: unknown) =>
-        debuggerPause(args as Parameters<typeof debuggerPause>[0]),
-    });
-
-    handlers.set('debugger_remove_breakpoint', {
-      name: 'debugger_remove_breakpoint',
-      definition: findTool(tools, 'debugger_remove_breakpoint'),
-      invoke: async (args: unknown) =>
-        debuggerRemoveBreakpoint(args as Parameters<typeof debuggerRemoveBreakpoint>[0]),
-    });
-
-    handlers.set('debugger_set_pause_on_exceptions', {
-      name: 'debugger_set_pause_on_exceptions',
-      definition: findTool(tools, 'debugger_set_pause_on_exceptions'),
-      invoke: async (args: unknown) =>
-        debuggerSetPauseOnExceptions(args as Parameters<typeof debuggerSetPauseOnExceptions>[0]),
-    });
+    /**
+     * Legacy-specific tools (14 tools)
+     *
+     * Granular Chrome connection and debugger operations.
+     * Only available when USE_LEGACY_TOOLS=true.
+     *
+     * Connection: chrome_connect, chrome_launch, list_targets, switch_target
+     * Debugger: debugger_enable, debugger_set_breakpoint, debugger_get_call_stack,
+     *           debugger_evaluate_on_call_frame, debugger_step_over, debugger_step_into,
+     *           debugger_step_out, debugger_resume, debugger_pause,
+     *           debugger_remove_breakpoint, debugger_set_pause_on_exceptions
+     */
+    addHandler(handlers, 'chrome_connect', tools, chromeConnect);
+    addHandler(handlers, 'chrome_launch', tools, chromeLaunch);
+    addHandler(handlers, 'list_targets', tools, listTargets);
+    addHandler(handlers, 'switch_target', tools, switchTarget);
+    addHandler(handlers, 'debugger_enable', tools, debuggerEnable);
+    addHandler(handlers, 'debugger_set_breakpoint', tools, debuggerSetBreakpoint);
+    addHandler(handlers, 'debugger_get_call_stack', tools, debuggerGetCallStack);
+    addHandler(handlers, 'debugger_evaluate_on_call_frame', tools, debuggerEvaluateOnCallFrame);
+    addHandler(handlers, 'debugger_step_over', tools, debuggerStepOver);
+    addHandler(handlers, 'debugger_step_into', tools, debuggerStepInto);
+    addHandler(handlers, 'debugger_step_out', tools, debuggerStepOut);
+    addHandler(handlers, 'debugger_resume', tools, debuggerResume);
+    addHandler(handlers, 'debugger_pause', tools, debuggerPause);
+    addHandler(handlers, 'debugger_remove_breakpoint', tools, debuggerRemoveBreakpoint);
+    addHandler(handlers, 'debugger_set_pause_on_exceptions', tools, debuggerSetPauseOnExceptions);
   } else {
-    // Smart-specific tools (8 tools)
-    handlers.set('connect', {
-      name: 'connect',
-      definition: findTool(tools, 'connect'),
-      invoke: async (args: unknown) =>
-        connect(args as Parameters<typeof connect>[0]),
-    });
-
-    handlers.set('target', {
-      name: 'target',
-      definition: findTool(tools, 'target'),
-      invoke: async (args: unknown) =>
-        target(args as Parameters<typeof target>[0]),
-    });
-
-    handlers.set('enable_debug_tools', {
-      name: 'enable_debug_tools',
-      definition: findTool(tools, 'enable_debug_tools'),
-      invoke: async (args: unknown) =>
-        enableDebugTools(args as Parameters<typeof enableDebugTools>[0]),
-    });
-
-    handlers.set('breakpoint', {
-      name: 'breakpoint',
-      definition: findTool(tools, 'breakpoint'),
-      invoke: async (args: unknown) =>
-        breakpoint(args as Parameters<typeof breakpoint>[0]),
-    });
-
-    handlers.set('step', {
-      name: 'step',
-      definition: findTool(tools, 'step'),
-      invoke: async (args: unknown) =>
-        step(args as Parameters<typeof step>[0]),
-    });
-
-    handlers.set('execution', {
-      name: 'execution',
-      definition: findTool(tools, 'execution'),
-      invoke: async (args: unknown) =>
-        execution(args as Parameters<typeof execution>[0]),
-    });
-
-    handlers.set('call_stack', {
-      name: 'call_stack',
-      definition: findTool(tools, 'call_stack'),
-      invoke: async (args: unknown) =>
-        callStack(args as Parameters<typeof callStack>[0]),
-    });
-
-    handlers.set('evaluate', {
-      name: 'evaluate',
-      definition: findTool(tools, 'evaluate'),
-      invoke: async (args: unknown) =>
-        evaluate(args as Parameters<typeof evaluate>[0]),
-    });
-
-    handlers.set('pause_on_exceptions', {
-      name: 'pause_on_exceptions',
-      definition: findTool(tools, 'pause_on_exceptions'),
-      invoke: async (args: unknown) =>
-        pauseOnExceptions(args as Parameters<typeof pauseOnExceptions>[0]),
-    });
+    /**
+     * Smart-specific tools (8 tools)
+     *
+     * Consolidated action-based Chrome connection and debugger operations.
+     * Only available when USE_LEGACY_TOOLS=false (default).
+     *
+     * Connection: connect, target
+     * Debugger: enable_debug_tools, breakpoint, step, execution,
+     *           call_stack, evaluate, pause_on_exceptions
+     */
+    addHandler(handlers, 'connect', tools, connect);
+    addHandler(handlers, 'target', tools, target);
+    addHandler(handlers, 'enable_debug_tools', tools, enableDebugTools);
+    addHandler(handlers, 'breakpoint', tools, breakpoint);
+    addHandler(handlers, 'step', tools, step);
+    addHandler(handlers, 'execution', tools, execution);
+    addHandler(handlers, 'call_stack', tools, callStack);
+    addHandler(handlers, 'evaluate', tools, evaluate);
+    addHandler(handlers, 'pause_on_exceptions', tools, pauseOnExceptions);
   }
 
   return handlers;
@@ -1180,6 +1044,34 @@ interface ErrorInfo {
 }
 
 /**
+ * Error object with attached classification metadata.
+ */
+interface ErrorWithInfo extends Error {
+  errorInfo: ErrorInfo;
+}
+
+/**
+ * Type guard for errors with errorInfo property.
+ */
+function hasErrorInfo(error: unknown): error is ErrorWithInfo {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'errorInfo' in error &&
+    error.errorInfo !== null &&
+    typeof error.errorInfo === 'object'
+  );
+}
+
+/**
+ * Tool arguments with optional connection_id.
+ */
+interface ToolArguments {
+  connection_id?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Classified error information for routing and observability.
  */
 interface ClassifiedError {
@@ -1190,6 +1082,19 @@ interface ClassifiedError {
   toolName?: string;
   connectionId?: string;
 }
+
+/**
+ * Error tool result with custom metadata fields.
+ *
+ * Extends CallToolResult with internal metadata for error tracking.
+ * The metadata fields (_toolName, _errorType, _recoverable) are not part of the
+ * MCP spec but are tolerated by the protocol for internal use.
+ */
+type ErrorToolResult = CallToolResult & {
+  _toolName: string;
+  _errorType: string;
+  _recoverable: boolean;
+};
 
 /**
  * Classify an error by type and extract metadata.
@@ -1205,11 +1110,11 @@ function classifyError(
   connectionId?: string
 ): ClassifiedError {
   // Check if error has errorInfo property (our custom errors)
-  if (error && typeof error === 'object' && 'errorInfo' in error) {
-    const info = (error as any).errorInfo as ErrorInfo;
+  if (hasErrorInfo(error)) {
+    const info = error.errorInfo;
     return {
       errorType: info.errorType,
-      message: error instanceof Error ? error.message : String(error),
+      message: error.message,
       recoverable: info.recoverable,
       suggestion: info.suggestion,
       toolName,
@@ -1288,11 +1193,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       throw new Error(`Unknown tool: ${name}`);
     }
 
-    return await handler.invoke(args);
+    // ToolResult matches CallToolResult structure but needs explicit cast
+    return await handler.invoke(args) as CallToolResult;
   } catch (error) {
     // PRESERVED: Error handling exactly as original (lines 1183-1204)
     const toolName = request.params.name;
-    const connectionId = (request.params.arguments as any)?.connection_id;
+    const connectionId = (request.params.arguments as ToolArguments | undefined)?.connection_id;
     const classified = classifyError(error, toolName, connectionId);
 
     logErrorEvent(classified);
@@ -1302,14 +1208,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ? `${classified.message}\n\nSuggestion: ${classified.suggestion}`
       : classified.message;
 
+    // Return error with custom metadata fields for internal tracking
     return {
       content: [{ type: 'text' as const, text: errorMessage }],
       isError: true,
-      // Metadata for client-side error handling
+      // Metadata for client-side error handling (not part of MCP spec but tolerated)
       _toolName: toolName,
       _errorType: classified.errorType,
       _recoverable: classified.recoverable,
-    } as any;
+    } as ErrorToolResult;
   }
 });
 
