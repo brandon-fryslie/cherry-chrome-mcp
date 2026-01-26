@@ -79,10 +79,12 @@ export declare function navigate(args: {
  *
  * Console messages are captured automatically when connected.
  * Returns the most recent messages (default: 3).
+ * Use expand_errors: true to include full stack traces for error messages.
  */
 export declare function getConsoleLogs(args: {
     filter_level?: string;
     limit?: number;
+    expand_errors?: boolean;
     connection_id?: string;
 }): Promise<{
     content: Array<{

@@ -74,21 +74,68 @@ export class BrowserManager {
         page.removeAllListeners('console');
         page.removeAllListeners('load');
         // Enable console capture with HMR detection
+        // NOTE: Handler must be synchronous for immediate capture; stack traces are extracted async
         page.on('console', (msg) => {
             const text = msg.text();
-            const isHmr = isHmrMessage(text);
+            const level = msg.type();
             // Track HMR updates
             if (isHmrUpdateMessage(text)) {
                 connection.hmrUpdateCount++;
                 connection.lastHmrTime = Date.now();
                 debug(`HMR update detected (count: ${connection.hmrUpdateCount}): ${text}`);
             }
-            connection.consoleLogs.push({
-                level: msg.type(),
-                text: text,
+            // Get stack trace locations from Puppeteer (synchronous)
+            const puppeteerStack = msg.stackTrace();
+            const stackLocations = puppeteerStack.length > 0
+                ? puppeteerStack.map(loc => ({
+                    url: loc.url,
+                    lineNumber: loc.lineNumber !== undefined ? loc.lineNumber + 1 : undefined, // Convert to 1-based
+                    columnNumber: loc.columnNumber,
+                }))
+                : undefined;
+            // Get source location from first stack frame if available
+            const firstLocation = puppeteerStack[0];
+            // Create log entry immediately (synchronous) to preserve ordering
+            const logEntry = {
+                level,
+                text,
+                stackLocations,
                 timestamp: Date.now(),
+                url: firstLocation?.url,
+                lineNumber: firstLocation?.lineNumber !== undefined ? firstLocation.lineNumber + 1 : undefined,
                 navigationEpoch: connection.navigationEpoch,
-            });
+            };
+            connection.consoleLogs.push(logEntry);
+            // For error messages, asynchronously extract the full stack trace from Error objects
+            // This enriches the log entry after it's been captured
+            if (level === 'error') {
+                const args = msg.args();
+                (async () => {
+                    try {
+                        for (const arg of args) {
+                            // Try to get the stack property from Error objects
+                            const stack = await arg.evaluate((obj) => {
+                                if (obj instanceof Error) {
+                                    return obj.stack;
+                                }
+                                // Check if it's an error-like object with a stack property
+                                if (obj && typeof obj === 'object' && 'stack' in obj) {
+                                    return String(obj.stack);
+                                }
+                                return null;
+                            }).catch(() => null);
+                            if (stack) {
+                                logEntry.stackTrace = stack;
+                                break;
+                            }
+                        }
+                    }
+                    catch (err) {
+                        // Ignore errors during stack trace extraction
+                        debug(`Failed to extract stack trace: ${err}`);
+                    }
+                })();
+            }
         });
         // Track page navigations/reloads
         page.on('load', () => {

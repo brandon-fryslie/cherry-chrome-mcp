@@ -232,13 +232,28 @@ export interface ToolResult {
     isError?: boolean;
 }
 /**
+ * Stack trace location from console message
+ */
+export interface StackTraceLocation {
+    /** Source URL */
+    url?: string;
+    /** Line number (0-based from Puppeteer, we convert to 1-based) */
+    lineNumber?: number;
+    /** Column number (0-based) */
+    columnNumber?: number;
+}
+/**
  * Console message captured from Runtime.consoleAPICalled
  */
 export interface ConsoleMessage {
     /** Log level: log, info, warn, error, debug */
     level: string;
-    /** Message text */
+    /** Message text (short version) */
     text: string;
+    /** Full stack trace string for errors (from Error.stack) */
+    stackTrace?: string;
+    /** Stack trace locations (from Puppeteer's stackTrace()) */
+    stackLocations?: StackTraceLocation[];
     /** Timestamp when captured */
     timestamp: number;
     /** Source URL if available */

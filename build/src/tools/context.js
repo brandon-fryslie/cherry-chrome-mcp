@@ -428,16 +428,31 @@ export async function gatherStepContext(connectionId, previousVars) {
  *
  * Returns formatted context including:
  * - Page title
- * - Console errors (if any)
+ * - Console errors (if any, up to 10 most recent)
  * - Element summary (buttons, inputs, links)
  */
-export async function gatherNavigateContext(page) {
+export async function gatherNavigateContext(page, connectionId) {
     const lines = [''];
     try {
         // Page title
         const title = await page.title();
         lines.push(`Title: ${title}`);
         lines.push('');
+        // Console errors (up to 10 most recent)
+        const connection = browserManager.getConnection(connectionId);
+        if (connection) {
+            const errorLogs = connection.consoleLogs
+                .filter(log => log.level === 'error')
+                .slice(-10);
+            if (errorLogs.length > 0) {
+                lines.push('Console Errors:');
+                for (const log of errorLogs) {
+                    const text = log.text.length > 200 ? log.text.substring(0, 197) + '...' : log.text;
+                    lines.push(`  [ERROR] ${text}`);
+                }
+                lines.push('');
+            }
+        }
         // Extract element counts using page.evaluate (runs in browser)
         // Use string-based evaluation to avoid TypeScript DOM type issues
         const pageData = await page.evaluate(`(() => {

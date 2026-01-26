@@ -43,13 +43,14 @@ describe('Console Log Grouping', () => {
         assert.strictEqual(result.content[0].type, 'text');
         const text = result.content[0].text;
         // Should contain x3 for Message A (3 consecutive)
-        assert.ok(text.includes('Message A x3'), 'Should group 3 consecutive Message A with x3');
+        // Format is: "Message A (location) x3" or "Message A x3" depending on whether location info is available
+        assert.ok(/Message A.*x3/.test(text), 'Should group 3 consecutive Message A with x3');
         // Should NOT have a count for Message B (only 1 occurrence)
-        assert.ok(text.includes('Message B') && !text.includes('Message B x'), 'Message B should not have count');
+        assert.ok(text.includes('Message B') && !/Message B.*x\d/.test(text), 'Message B should not have count');
         // Should contain x2 for Error X (2 consecutive)
-        assert.ok(text.includes('Error X x2'), 'Should group 2 consecutive Error X with x2');
+        assert.ok(/Error X.*x2/.test(text), 'Should group 2 consecutive Error X with x2');
         // Should contain x5 for Message C (5 consecutive)
-        assert.ok(text.includes('Message C x5'), 'Should group 5 consecutive Message C with x5');
+        assert.ok(/Message C.*x5/.test(text), 'Should group 5 consecutive Message C with x5');
         // Should have fewer lines than total messages (grouping is working)
         const messageLines = text.split('\n').filter(line => line.includes('] ['));
         assert.ok(messageLines.length < 11, `Should have fewer than 11 lines (got ${messageLines.length}), grouping should reduce line count`);
@@ -61,7 +62,8 @@ describe('Console Log Grouping', () => {
         });
         const text = result.content[0].text;
         // Each grouped message should still have a timestamp
-        const groupedMessages = text.match(/\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[LOG\] Message A x3/);
+        // Format is: "[HH:MM:SS.mmm] [LOG] Message A (location) x3" or without location
+        const groupedMessages = text.match(/\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[LOG\] Message A.*x3/);
         assert.ok(groupedMessages, 'Grouped message should have timestamp');
     });
     it('should not group messages with different levels', async () => {

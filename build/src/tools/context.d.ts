@@ -37,10 +37,10 @@ export declare function gatherStepContext(connectionId?: string, previousVars?: 
  *
  * Returns formatted context including:
  * - Page title
- * - Console errors (if any)
+ * - Console errors (if any, up to 10 most recent)
  * - Element summary (buttons, inputs, links)
  */
-export declare function gatherNavigateContext(page: Page): Promise<string>;
+export declare function gatherNavigateContext(page: Page, connectionId?: string): Promise<string>;
 /**
  * Gather context after a DOM action (click, fill)
  *

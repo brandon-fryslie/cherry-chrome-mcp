@@ -35,7 +35,7 @@ export class ChromeNotConnectedError extends Error {
   readonly errorInfo: ErrorInfo = {
     errorType: 'CONNECTION',
     recoverable: true,
-    suggestion: 'Call chrome({ action: "launch" }) or chrome({ action: "connect" }) to establish a connection',
+    suggestion: 'Call connect({ url: "https://..." }) to launch Chrome and navigate to a URL',
   };
 
   constructor(connectionId?: string) {
@@ -43,8 +43,8 @@ export class ChromeNotConnectedError extends Error {
     super(
       `No Chrome connection '${id}' found.\n\n` +
         `To connect:\n` +
-        `  1. Start Chrome with: google-chrome --remote-debugging-port=9222\n` +
-        `  2. Call: chrome({ action: "connect" }) or chrome({ action: "launch" })`
+        `  - Launch new Chrome: connect({ url: "https://example.com" })\n` +
+        `  - Connect to existing: connect({ url: "https://example.com", port: 9222 })`
     );
     this.name = 'ChromeNotConnectedError';
   }

@@ -17,6 +17,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 import { USE_LEGACY_TOOLS } from './config.js';
 import { browserManager } from './browser.js';
+import { createToolRegistry, type ToolHandler } from './toolRegistry.js';
 
 // Import all tools (legacy and new consolidated)
 import {
@@ -899,6 +900,277 @@ const smartTools: Tool[] = [
 const activeTools = USE_LEGACY_TOOLS ? legacyTools : smartTools;
 
 /**
+ * Helper to find tool by name in an array
+ */
+function findTool(tools: Tool[], name: string): Tool {
+  const tool = tools.find(t => t.name === name);
+  if (!tool) {
+    throw new Error(`Tool definition not found: ${name}`);
+  }
+  return tool;
+}
+
+/**
+ * Create tool handlers based on feature toggle.
+ *
+ * Phase 2: Handler Mappings
+ * - Creates Map of tool name → ToolHandler
+ * - Preserves type casting pattern from original switch statements
+ * - Shared tools (6 DOM + 3 connection = 9 total) present in both modes
+ * - Legacy mode: 23 handlers (9 shared + 14 legacy-specific)
+ * - Smart mode: 17 handlers (9 shared + 8 smart-specific)
+ *
+ * Type Safety: Each handler casts args using Parameters<typeof toolFn>[0]
+ */
+function createToolHandlers(useLegacy: boolean): Map<string, ToolHandler> {
+  const handlers = new Map<string, ToolHandler>();
+  const tools = useLegacy ? legacyTools : smartTools;
+
+  // Shared DOM tools (6 tools)
+  handlers.set('query_elements', {
+    name: 'query_elements',
+    definition: findTool(tools, 'query_elements'),
+    invoke: async (args: unknown) =>
+      queryElements(args as Parameters<typeof queryElements>[0]),
+  });
+
+  handlers.set('click_element', {
+    name: 'click_element',
+    definition: findTool(tools, 'click_element'),
+    invoke: async (args: unknown) =>
+      clickElement(args as Parameters<typeof clickElement>[0]),
+  });
+
+  handlers.set('fill_element', {
+    name: 'fill_element',
+    definition: findTool(tools, 'fill_element'),
+    invoke: async (args: unknown) =>
+      fillElement(args as Parameters<typeof fillElement>[0]),
+  });
+
+  handlers.set('navigate', {
+    name: 'navigate',
+    definition: findTool(tools, 'navigate'),
+    invoke: async (args: unknown) =>
+      navigate(args as Parameters<typeof navigate>[0]),
+  });
+
+  handlers.set('get_console_logs', {
+    name: 'get_console_logs',
+    definition: findTool(tools, 'get_console_logs'),
+    invoke: async (args: unknown) =>
+      getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]),
+  });
+
+  handlers.set('inspect_element', {
+    name: 'inspect_element',
+    definition: findTool(tools, 'inspect_element'),
+    invoke: async (args: unknown) =>
+      inspectElement(args as Parameters<typeof inspectElement>[0]),
+  });
+
+  // Shared connection tools (3 tools)
+  handlers.set('chrome_list_connections', {
+    name: 'chrome_list_connections',
+    definition: findTool(tools, 'chrome_list_connections'),
+    invoke: async (args: unknown) => chromeListConnections(),
+  });
+
+  handlers.set('chrome_switch_connection', {
+    name: 'chrome_switch_connection',
+    definition: findTool(tools, 'chrome_switch_connection'),
+    invoke: async (args: unknown) =>
+      chromeSwitchConnection(args as Parameters<typeof chromeSwitchConnection>[0]),
+  });
+
+  handlers.set('chrome_disconnect', {
+    name: 'chrome_disconnect',
+    definition: findTool(tools, 'chrome_disconnect'),
+    invoke: async (args: unknown) =>
+      chromeDisconnect(args as Parameters<typeof chromeDisconnect>[0]),
+  });
+
+  if (useLegacy) {
+    // Legacy-specific tools (14 tools)
+    handlers.set('chrome_connect', {
+      name: 'chrome_connect',
+      definition: findTool(tools, 'chrome_connect'),
+      invoke: async (args: unknown) =>
+        chromeConnect(args as Parameters<typeof chromeConnect>[0]),
+    });
+
+    handlers.set('chrome_launch', {
+      name: 'chrome_launch',
+      definition: findTool(tools, 'chrome_launch'),
+      invoke: async (args: unknown) =>
+        chromeLaunch(args as Parameters<typeof chromeLaunch>[0]),
+    });
+
+    handlers.set('list_targets', {
+      name: 'list_targets',
+      definition: findTool(tools, 'list_targets'),
+      invoke: async (args: unknown) =>
+        listTargets(args as Parameters<typeof listTargets>[0]),
+    });
+
+    handlers.set('switch_target', {
+      name: 'switch_target',
+      definition: findTool(tools, 'switch_target'),
+      invoke: async (args: unknown) =>
+        switchTarget(args as Parameters<typeof switchTarget>[0]),
+    });
+
+    handlers.set('debugger_enable', {
+      name: 'debugger_enable',
+      definition: findTool(tools, 'debugger_enable'),
+      invoke: async (args: unknown) =>
+        debuggerEnable(args as Parameters<typeof debuggerEnable>[0]),
+    });
+
+    handlers.set('debugger_set_breakpoint', {
+      name: 'debugger_set_breakpoint',
+      definition: findTool(tools, 'debugger_set_breakpoint'),
+      invoke: async (args: unknown) =>
+        debuggerSetBreakpoint(args as Parameters<typeof debuggerSetBreakpoint>[0]),
+    });
+
+    handlers.set('debugger_get_call_stack', {
+      name: 'debugger_get_call_stack',
+      definition: findTool(tools, 'debugger_get_call_stack'),
+      invoke: async (args: unknown) =>
+        debuggerGetCallStack(args as Parameters<typeof debuggerGetCallStack>[0]),
+    });
+
+    handlers.set('debugger_evaluate_on_call_frame', {
+      name: 'debugger_evaluate_on_call_frame',
+      definition: findTool(tools, 'debugger_evaluate_on_call_frame'),
+      invoke: async (args: unknown) =>
+        debuggerEvaluateOnCallFrame(args as Parameters<typeof debuggerEvaluateOnCallFrame>[0]),
+    });
+
+    handlers.set('debugger_step_over', {
+      name: 'debugger_step_over',
+      definition: findTool(tools, 'debugger_step_over'),
+      invoke: async (args: unknown) =>
+        debuggerStepOver(args as Parameters<typeof debuggerStepOver>[0]),
+    });
+
+    handlers.set('debugger_step_into', {
+      name: 'debugger_step_into',
+      definition: findTool(tools, 'debugger_step_into'),
+      invoke: async (args: unknown) =>
+        debuggerStepInto(args as Parameters<typeof debuggerStepInto>[0]),
+    });
+
+    handlers.set('debugger_step_out', {
+      name: 'debugger_step_out',
+      definition: findTool(tools, 'debugger_step_out'),
+      invoke: async (args: unknown) =>
+        debuggerStepOut(args as Parameters<typeof debuggerStepOut>[0]),
+    });
+
+    handlers.set('debugger_resume', {
+      name: 'debugger_resume',
+      definition: findTool(tools, 'debugger_resume'),
+      invoke: async (args: unknown) =>
+        debuggerResume(args as Parameters<typeof debuggerResume>[0]),
+    });
+
+    handlers.set('debugger_pause', {
+      name: 'debugger_pause',
+      definition: findTool(tools, 'debugger_pause'),
+      invoke: async (args: unknown) =>
+        debuggerPause(args as Parameters<typeof debuggerPause>[0]),
+    });
+
+    handlers.set('debugger_remove_breakpoint', {
+      name: 'debugger_remove_breakpoint',
+      definition: findTool(tools, 'debugger_remove_breakpoint'),
+      invoke: async (args: unknown) =>
+        debuggerRemoveBreakpoint(args as Parameters<typeof debuggerRemoveBreakpoint>[0]),
+    });
+
+    handlers.set('debugger_set_pause_on_exceptions', {
+      name: 'debugger_set_pause_on_exceptions',
+      definition: findTool(tools, 'debugger_set_pause_on_exceptions'),
+      invoke: async (args: unknown) =>
+        debuggerSetPauseOnExceptions(args as Parameters<typeof debuggerSetPauseOnExceptions>[0]),
+    });
+  } else {
+    // Smart-specific tools (8 tools)
+    handlers.set('connect', {
+      name: 'connect',
+      definition: findTool(tools, 'connect'),
+      invoke: async (args: unknown) =>
+        connect(args as Parameters<typeof connect>[0]),
+    });
+
+    handlers.set('target', {
+      name: 'target',
+      definition: findTool(tools, 'target'),
+      invoke: async (args: unknown) =>
+        target(args as Parameters<typeof target>[0]),
+    });
+
+    handlers.set('enable_debug_tools', {
+      name: 'enable_debug_tools',
+      definition: findTool(tools, 'enable_debug_tools'),
+      invoke: async (args: unknown) =>
+        enableDebugTools(args as Parameters<typeof enableDebugTools>[0]),
+    });
+
+    handlers.set('breakpoint', {
+      name: 'breakpoint',
+      definition: findTool(tools, 'breakpoint'),
+      invoke: async (args: unknown) =>
+        breakpoint(args as Parameters<typeof breakpoint>[0]),
+    });
+
+    handlers.set('step', {
+      name: 'step',
+      definition: findTool(tools, 'step'),
+      invoke: async (args: unknown) =>
+        step(args as Parameters<typeof step>[0]),
+    });
+
+    handlers.set('execution', {
+      name: 'execution',
+      definition: findTool(tools, 'execution'),
+      invoke: async (args: unknown) =>
+        execution(args as Parameters<typeof execution>[0]),
+    });
+
+    handlers.set('call_stack', {
+      name: 'call_stack',
+      definition: findTool(tools, 'call_stack'),
+      invoke: async (args: unknown) =>
+        callStack(args as Parameters<typeof callStack>[0]),
+    });
+
+    handlers.set('evaluate', {
+      name: 'evaluate',
+      definition: findTool(tools, 'evaluate'),
+      invoke: async (args: unknown) =>
+        evaluate(args as Parameters<typeof evaluate>[0]),
+    });
+
+    handlers.set('pause_on_exceptions', {
+      name: 'pause_on_exceptions',
+      definition: findTool(tools, 'pause_on_exceptions'),
+      invoke: async (args: unknown) =>
+        pauseOnExceptions(args as Parameters<typeof pauseOnExceptions>[0]),
+    });
+  }
+
+  return handlers;
+}
+
+// Phase 3: Registry Integration
+// Initialize registry at module load (eager initialization)
+const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS);
+const toolRegistry = createToolRegistry(activeTools, toolHandlers);
+
+/**
  * Error metadata for classification and recovery guidance.
  */
 interface ErrorInfo {
@@ -980,7 +1252,7 @@ function logErrorEvent(classified: ClassifiedError): void {
 
 // Handle tool list requests
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools: activeTools };
+  return { tools: toolRegistry.getAllTools() };
 });
 
 /**
@@ -1005,181 +1277,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  * All error messages are preserved. Suggestions added based on error type.
  * Console logs include tool name, error type, and recovery suggestion.
  */
-// Handle tool execution
+// Handle tool execution via registry lookup
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
 
   try {
-    if (USE_LEGACY_TOOLS) {
-      // Legacy tools routing
-      switch (name) {
-        // Chrome connection tools
-        case 'chrome_connect':
-          return await chromeConnect(args as Parameters<typeof chromeConnect>[0]);
-
-        case 'chrome_launch':
-          return await chromeLaunch(args as Parameters<typeof chromeLaunch>[0]);
-
-        case 'chrome_list_connections':
-          return await chromeListConnections();
-
-        case 'chrome_switch_connection':
-          return await chromeSwitchConnection(
-            args as Parameters<typeof chromeSwitchConnection>[0]
-          );
-
-        case 'chrome_disconnect':
-          return await chromeDisconnect(
-            args as Parameters<typeof chromeDisconnect>[0]
-          );
-
-        case 'list_targets':
-          return await listTargets(args as Parameters<typeof listTargets>[0]);
-
-        case 'switch_target':
-          return await switchTarget(args as Parameters<typeof switchTarget>[0]);
-
-        // DOM tools
-        case 'query_elements':
-          return await queryElements(args as Parameters<typeof queryElements>[0]);
-
-        case 'click_element':
-          return await clickElement(args as Parameters<typeof clickElement>[0]);
-
-        case 'fill_element':
-          return await fillElement(args as Parameters<typeof fillElement>[0]);
-
-        case 'navigate':
-          return await navigate(args as Parameters<typeof navigate>[0]);
-
-        case 'get_console_logs':
-          return await getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]);
-
-        case 'inspect_element':
-          return await inspectElement(args as Parameters<typeof inspectElement>[0]);
-
-        // Debugger tools
-        case 'debugger_enable':
-          return await debuggerEnable(args as Parameters<typeof debuggerEnable>[0]);
-
-        case 'debugger_set_breakpoint':
-          return await debuggerSetBreakpoint(
-            args as Parameters<typeof debuggerSetBreakpoint>[0]
-          );
-
-        case 'debugger_get_call_stack':
-          return await debuggerGetCallStack(
-            args as Parameters<typeof debuggerGetCallStack>[0]
-          );
-
-        case 'debugger_evaluate_on_call_frame':
-          return await debuggerEvaluateOnCallFrame(
-            args as Parameters<typeof debuggerEvaluateOnCallFrame>[0]
-          );
-
-        case 'debugger_step_over':
-          return await debuggerStepOver(
-            args as Parameters<typeof debuggerStepOver>[0]
-          );
-
-        case 'debugger_step_into':
-          return await debuggerStepInto(
-            args as Parameters<typeof debuggerStepInto>[0]
-          );
-
-        case 'debugger_step_out':
-          return await debuggerStepOut(
-            args as Parameters<typeof debuggerStepOut>[0]
-          );
-
-        case 'debugger_resume':
-          return await debuggerResume(args as Parameters<typeof debuggerResume>[0]);
-
-        case 'debugger_pause':
-          return await debuggerPause(args as Parameters<typeof debuggerPause>[0]);
-
-        case 'debugger_remove_breakpoint':
-          return await debuggerRemoveBreakpoint(
-            args as Parameters<typeof debuggerRemoveBreakpoint>[0]
-          );
-
-        case 'debugger_set_pause_on_exceptions':
-          return await debuggerSetPauseOnExceptions(
-            args as Parameters<typeof debuggerSetPauseOnExceptions>[0]
-          );
-
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-    } else {
-      // Smart consolidated tools routing
-      switch (name) {
-        // Chrome connection tools
-        case 'connect':
-          return await connect(args as Parameters<typeof connect>[0]);
-
-        case 'chrome_list_connections':
-          return await chromeListConnections();
-
-        case 'chrome_switch_connection':
-          return await chromeSwitchConnection(
-            args as Parameters<typeof chromeSwitchConnection>[0]
-          );
-
-        case 'chrome_disconnect':
-          return await chromeDisconnect(
-            args as Parameters<typeof chromeDisconnect>[0]
-          );
-
-        case 'target':
-          return await target(args as Parameters<typeof target>[0]);
-
-        // DOM tools (same as legacy)
-        case 'query_elements':
-          return await queryElements(args as Parameters<typeof queryElements>[0]);
-
-        case 'click_element':
-          return await clickElement(args as Parameters<typeof clickElement>[0]);
-
-        case 'fill_element':
-          return await fillElement(args as Parameters<typeof fillElement>[0]);
-
-        case 'navigate':
-          return await navigate(args as Parameters<typeof navigate>[0]);
-
-        case 'get_console_logs':
-          return await getConsoleLogs(args as Parameters<typeof getConsoleLogs>[0]);
-
-        case 'inspect_element':
-          return await inspectElement(args as Parameters<typeof inspectElement>[0]);
-
-        // Debugger tools (consolidated)
-        case 'enable_debug_tools':
-          return await enableDebugTools(args as Parameters<typeof enableDebugTools>[0]);
-
-        case 'breakpoint':
-          return await breakpoint(args as Parameters<typeof breakpoint>[0]);
-
-        case 'step':
-          return await step(args as Parameters<typeof step>[0]);
-
-        case 'execution':
-          return await execution(args as Parameters<typeof execution>[0]);
-
-        case 'call_stack':
-          return await callStack(args as Parameters<typeof callStack>[0]);
-
-        case 'evaluate':
-          return await evaluate(args as Parameters<typeof evaluate>[0]);
-
-        case 'pause_on_exceptions':
-          return await pauseOnExceptions(args as Parameters<typeof pauseOnExceptions>[0]);
-
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
+    // Phase 3: Registry Lookup (replaces 172 lines of switch statements)
+    const handler = toolRegistry.getHandler(name);
+    if (!handler) {
+      throw new Error(`Unknown tool: ${name}`);
     }
+
+    return await handler.invoke(args);
   } catch (error) {
+    // PRESERVED: Error handling exactly as original (lines 1183-1204)
     const toolName = request.params.name;
     const connectionId = (request.params.arguments as any)?.connection_id;
     const classified = classifyError(error, toolName, connectionId);
@@ -1192,13 +1303,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       : classified.message;
 
     return {
-      content: [{ type: 'text', text: errorMessage }],
+      content: [{ type: 'text' as const, text: errorMessage }],
       isError: true,
       // Metadata for client-side error handling
       _toolName: toolName,
       _errorType: classified.errorType,
       _recoverable: classified.recoverable,
-    };
+    } as any;
   }
 });
 

@@ -9,8 +9,9 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
 import { USE_LEGACY_TOOLS } from './config.js';
+import { createToolRegistry } from './toolRegistry.js';
 // Import all tools (legacy and new consolidated)
-import { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnection, chromeDisconnect, listTargets, switchTarget, chrome, target, enableDebugTools, queryElements, clickElement, fillElement, navigate, getConsoleLogs, inspectElement, debuggerEnable, debuggerSetBreakpoint, debuggerGetCallStack, debuggerEvaluateOnCallFrame, debuggerStepOver, debuggerStepInto, debuggerStepOut, debuggerResume, debuggerPause, debuggerRemoveBreakpoint, debuggerSetPauseOnExceptions, step, execution, breakpoint, callStack, evaluate, pauseOnExceptions, } from './tools/index.js';
+import { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnection, chromeDisconnect, listTargets, switchTarget, connect, target, enableDebugTools, queryElements, clickElement, fillElement, navigate, getConsoleLogs, inspectElement, debuggerEnable, debuggerSetBreakpoint, debuggerGetCallStack, debuggerEvaluateOnCallFrame, debuggerStepOver, debuggerStepInto, debuggerStepOut, debuggerResume, debuggerPause, debuggerRemoveBreakpoint, debuggerSetPauseOnExceptions, step, execution, breakpoint, callStack, evaluate, pauseOnExceptions, } from './tools/index.js';
 const server = new Server({
     name: 'cherry-chrome-mcp',
     version: '0.1.0',
@@ -141,7 +142,7 @@ const toolMetadata = {
             },
         },
         getConsoleLogs: {
-            description: 'Get console log messages from the browser. Messages are captured automatically.',
+            description: 'Get console log messages from the browser. Messages are captured automatically. Use expand_errors to include full stack traces for error messages.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -154,6 +155,11 @@ const toolMetadata = {
                         type: 'number',
                         description: 'Maximum number of messages to return (most recent)',
                         default: 3,
+                    },
+                    expand_errors: {
+                        type: 'boolean',
+                        description: 'Include full stack traces for error messages (default: false)',
+                        default: false,
                     },
                     connection_id: {
                         type: 'string',
@@ -574,46 +580,39 @@ const legacyTools = [
 const smartTools = [
     // Chrome Connection Management (consolidated)
     {
-        name: 'chrome',
-        description: 'Connect or launch Chrome with remote debugging. Consolidates chrome_connect and chrome_launch into a single action-based tool.',
+        name: 'connect',
+        description: 'Connect to Chrome and navigate to a URL. If port is provided, connects to existing Chrome on that port (verifies something is running first). If port is omitted, launches a new Chrome instance on a random port (15000-18000). Always navigates to the URL and returns page context.',
         inputSchema: {
             type: 'object',
             properties: {
-                action: {
+                url: {
                     type: 'string',
-                    description: '"connect" to existing Chrome or "launch" new instance',
-                    enum: ['connect', 'launch'],
+                    description: 'URL to navigate to after connecting',
                 },
                 port: {
                     type: 'number',
-                    description: 'Chrome remote debugging port (for connect) or debug port (for launch)',
-                    default: 9222,
+                    description: 'Chrome remote debugging port. If provided, connects to existing Chrome. If omitted, launches new Chrome on random port.',
                 },
                 connection_id: {
                     type: 'string',
                     description: 'Unique identifier for this connection',
                     default: 'default',
                 },
-                host: {
-                    type: 'string',
-                    description: 'Chrome host (for connect only)',
-                    default: 'localhost',
-                },
                 headless: {
                     type: 'boolean',
-                    description: 'Run in headless mode (for launch only)',
-                    default: false,
+                    description: 'Run in headless mode (only when launching new Chrome)',
+                    default: true,
                 },
                 user_data_dir: {
                     type: 'string',
-                    description: 'Custom user data directory path (for launch only)',
+                    description: 'Custom user data directory path (only when launching new Chrome)',
                 },
                 extra_args: {
                     type: 'string',
-                    description: 'Additional Chrome flags (for launch only)',
+                    description: 'Additional Chrome flags (only when launching new Chrome)',
                 },
             },
-            required: ['action'],
+            required: ['url'],
         },
     },
     // Connection tools (from shared metadata)
@@ -818,6 +817,210 @@ const smartTools = [
 // Select tool set based on feature flag
 const activeTools = USE_LEGACY_TOOLS ? legacyTools : smartTools;
 /**
+ * Helper to find tool by name in an array
+ */
+function findTool(tools, name) {
+    const tool = tools.find(t => t.name === name);
+    if (!tool) {
+        throw new Error(`Tool definition not found: ${name}`);
+    }
+    return tool;
+}
+/**
+ * Create tool handlers based on feature toggle.
+ *
+ * Phase 2: Handler Mappings
+ * - Creates Map of tool name → ToolHandler
+ * - Preserves type casting pattern from original switch statements
+ * - Shared tools (6 DOM + 3 connection = 9 total) present in both modes
+ * - Legacy mode: 23 handlers (9 shared + 14 legacy-specific)
+ * - Smart mode: 17 handlers (9 shared + 8 smart-specific)
+ *
+ * Type Safety: Each handler casts args using Parameters<typeof toolFn>[0]
+ */
+function createToolHandlers(useLegacy) {
+    const handlers = new Map();
+    const tools = useLegacy ? legacyTools : smartTools;
+    // Shared DOM tools (6 tools)
+    handlers.set('query_elements', {
+        name: 'query_elements',
+        definition: findTool(tools, 'query_elements'),
+        invoke: async (args) => queryElements(args),
+    });
+    handlers.set('click_element', {
+        name: 'click_element',
+        definition: findTool(tools, 'click_element'),
+        invoke: async (args) => clickElement(args),
+    });
+    handlers.set('fill_element', {
+        name: 'fill_element',
+        definition: findTool(tools, 'fill_element'),
+        invoke: async (args) => fillElement(args),
+    });
+    handlers.set('navigate', {
+        name: 'navigate',
+        definition: findTool(tools, 'navigate'),
+        invoke: async (args) => navigate(args),
+    });
+    handlers.set('get_console_logs', {
+        name: 'get_console_logs',
+        definition: findTool(tools, 'get_console_logs'),
+        invoke: async (args) => getConsoleLogs(args),
+    });
+    handlers.set('inspect_element', {
+        name: 'inspect_element',
+        definition: findTool(tools, 'inspect_element'),
+        invoke: async (args) => inspectElement(args),
+    });
+    // Shared connection tools (3 tools)
+    handlers.set('chrome_list_connections', {
+        name: 'chrome_list_connections',
+        definition: findTool(tools, 'chrome_list_connections'),
+        invoke: async (args) => chromeListConnections(),
+    });
+    handlers.set('chrome_switch_connection', {
+        name: 'chrome_switch_connection',
+        definition: findTool(tools, 'chrome_switch_connection'),
+        invoke: async (args) => chromeSwitchConnection(args),
+    });
+    handlers.set('chrome_disconnect', {
+        name: 'chrome_disconnect',
+        definition: findTool(tools, 'chrome_disconnect'),
+        invoke: async (args) => chromeDisconnect(args),
+    });
+    if (useLegacy) {
+        // Legacy-specific tools (14 tools)
+        handlers.set('chrome_connect', {
+            name: 'chrome_connect',
+            definition: findTool(tools, 'chrome_connect'),
+            invoke: async (args) => chromeConnect(args),
+        });
+        handlers.set('chrome_launch', {
+            name: 'chrome_launch',
+            definition: findTool(tools, 'chrome_launch'),
+            invoke: async (args) => chromeLaunch(args),
+        });
+        handlers.set('list_targets', {
+            name: 'list_targets',
+            definition: findTool(tools, 'list_targets'),
+            invoke: async (args) => listTargets(args),
+        });
+        handlers.set('switch_target', {
+            name: 'switch_target',
+            definition: findTool(tools, 'switch_target'),
+            invoke: async (args) => switchTarget(args),
+        });
+        handlers.set('debugger_enable', {
+            name: 'debugger_enable',
+            definition: findTool(tools, 'debugger_enable'),
+            invoke: async (args) => debuggerEnable(args),
+        });
+        handlers.set('debugger_set_breakpoint', {
+            name: 'debugger_set_breakpoint',
+            definition: findTool(tools, 'debugger_set_breakpoint'),
+            invoke: async (args) => debuggerSetBreakpoint(args),
+        });
+        handlers.set('debugger_get_call_stack', {
+            name: 'debugger_get_call_stack',
+            definition: findTool(tools, 'debugger_get_call_stack'),
+            invoke: async (args) => debuggerGetCallStack(args),
+        });
+        handlers.set('debugger_evaluate_on_call_frame', {
+            name: 'debugger_evaluate_on_call_frame',
+            definition: findTool(tools, 'debugger_evaluate_on_call_frame'),
+            invoke: async (args) => debuggerEvaluateOnCallFrame(args),
+        });
+        handlers.set('debugger_step_over', {
+            name: 'debugger_step_over',
+            definition: findTool(tools, 'debugger_step_over'),
+            invoke: async (args) => debuggerStepOver(args),
+        });
+        handlers.set('debugger_step_into', {
+            name: 'debugger_step_into',
+            definition: findTool(tools, 'debugger_step_into'),
+            invoke: async (args) => debuggerStepInto(args),
+        });
+        handlers.set('debugger_step_out', {
+            name: 'debugger_step_out',
+            definition: findTool(tools, 'debugger_step_out'),
+            invoke: async (args) => debuggerStepOut(args),
+        });
+        handlers.set('debugger_resume', {
+            name: 'debugger_resume',
+            definition: findTool(tools, 'debugger_resume'),
+            invoke: async (args) => debuggerResume(args),
+        });
+        handlers.set('debugger_pause', {
+            name: 'debugger_pause',
+            definition: findTool(tools, 'debugger_pause'),
+            invoke: async (args) => debuggerPause(args),
+        });
+        handlers.set('debugger_remove_breakpoint', {
+            name: 'debugger_remove_breakpoint',
+            definition: findTool(tools, 'debugger_remove_breakpoint'),
+            invoke: async (args) => debuggerRemoveBreakpoint(args),
+        });
+        handlers.set('debugger_set_pause_on_exceptions', {
+            name: 'debugger_set_pause_on_exceptions',
+            definition: findTool(tools, 'debugger_set_pause_on_exceptions'),
+            invoke: async (args) => debuggerSetPauseOnExceptions(args),
+        });
+    }
+    else {
+        // Smart-specific tools (8 tools)
+        handlers.set('connect', {
+            name: 'connect',
+            definition: findTool(tools, 'connect'),
+            invoke: async (args) => connect(args),
+        });
+        handlers.set('target', {
+            name: 'target',
+            definition: findTool(tools, 'target'),
+            invoke: async (args) => target(args),
+        });
+        handlers.set('enable_debug_tools', {
+            name: 'enable_debug_tools',
+            definition: findTool(tools, 'enable_debug_tools'),
+            invoke: async (args) => enableDebugTools(args),
+        });
+        handlers.set('breakpoint', {
+            name: 'breakpoint',
+            definition: findTool(tools, 'breakpoint'),
+            invoke: async (args) => breakpoint(args),
+        });
+        handlers.set('step', {
+            name: 'step',
+            definition: findTool(tools, 'step'),
+            invoke: async (args) => step(args),
+        });
+        handlers.set('execution', {
+            name: 'execution',
+            definition: findTool(tools, 'execution'),
+            invoke: async (args) => execution(args),
+        });
+        handlers.set('call_stack', {
+            name: 'call_stack',
+            definition: findTool(tools, 'call_stack'),
+            invoke: async (args) => callStack(args),
+        });
+        handlers.set('evaluate', {
+            name: 'evaluate',
+            definition: findTool(tools, 'evaluate'),
+            invoke: async (args) => evaluate(args),
+        });
+        handlers.set('pause_on_exceptions', {
+            name: 'pause_on_exceptions',
+            definition: findTool(tools, 'pause_on_exceptions'),
+            invoke: async (args) => pauseOnExceptions(args),
+        });
+    }
+    return handlers;
+}
+// Phase 3: Registry Integration
+// Initialize registry at module load (eager initialization)
+const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS);
+const toolRegistry = createToolRegistry(activeTools, toolHandlers);
+/**
  * Classify an error by type and extract metadata.
  *
  * Looks for errorInfo property on error object (added to custom error classes).
@@ -869,7 +1072,7 @@ function logErrorEvent(classified) {
 }
 // Handle tool list requests
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: activeTools };
+    return { tools: toolRegistry.getAllTools() };
 });
 /**
  * Global error classification and handling in MCP tool routing.
@@ -893,116 +1096,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  * All error messages are preserved. Suggestions added based on error type.
  * Console logs include tool name, error type, and recovery suggestion.
  */
-// Handle tool execution
+// Handle tool execution via registry lookup
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
     try {
-        if (USE_LEGACY_TOOLS) {
-            // Legacy tools routing
-            switch (name) {
-                // Chrome connection tools
-                case 'chrome_connect':
-                    return await chromeConnect(args);
-                case 'chrome_launch':
-                    return await chromeLaunch(args);
-                case 'chrome_list_connections':
-                    return await chromeListConnections();
-                case 'chrome_switch_connection':
-                    return await chromeSwitchConnection(args);
-                case 'chrome_disconnect':
-                    return await chromeDisconnect(args);
-                case 'list_targets':
-                    return await listTargets(args);
-                case 'switch_target':
-                    return await switchTarget(args);
-                // DOM tools
-                case 'query_elements':
-                    return await queryElements(args);
-                case 'click_element':
-                    return await clickElement(args);
-                case 'fill_element':
-                    return await fillElement(args);
-                case 'navigate':
-                    return await navigate(args);
-                case 'get_console_logs':
-                    return await getConsoleLogs(args);
-                case 'inspect_element':
-                    return await inspectElement(args);
-                // Debugger tools
-                case 'debugger_enable':
-                    return await debuggerEnable(args);
-                case 'debugger_set_breakpoint':
-                    return await debuggerSetBreakpoint(args);
-                case 'debugger_get_call_stack':
-                    return await debuggerGetCallStack(args);
-                case 'debugger_evaluate_on_call_frame':
-                    return await debuggerEvaluateOnCallFrame(args);
-                case 'debugger_step_over':
-                    return await debuggerStepOver(args);
-                case 'debugger_step_into':
-                    return await debuggerStepInto(args);
-                case 'debugger_step_out':
-                    return await debuggerStepOut(args);
-                case 'debugger_resume':
-                    return await debuggerResume(args);
-                case 'debugger_pause':
-                    return await debuggerPause(args);
-                case 'debugger_remove_breakpoint':
-                    return await debuggerRemoveBreakpoint(args);
-                case 'debugger_set_pause_on_exceptions':
-                    return await debuggerSetPauseOnExceptions(args);
-                default:
-                    throw new Error(`Unknown tool: ${name}`);
-            }
+        // Phase 3: Registry Lookup (replaces 172 lines of switch statements)
+        const handler = toolRegistry.getHandler(name);
+        if (!handler) {
+            throw new Error(`Unknown tool: ${name}`);
         }
-        else {
-            // Smart consolidated tools routing
-            switch (name) {
-                // Chrome connection tools
-                case 'chrome':
-                    return await chrome(args);
-                case 'chrome_list_connections':
-                    return await chromeListConnections();
-                case 'chrome_switch_connection':
-                    return await chromeSwitchConnection(args);
-                case 'chrome_disconnect':
-                    return await chromeDisconnect(args);
-                case 'target':
-                    return await target(args);
-                // DOM tools (same as legacy)
-                case 'query_elements':
-                    return await queryElements(args);
-                case 'click_element':
-                    return await clickElement(args);
-                case 'fill_element':
-                    return await fillElement(args);
-                case 'navigate':
-                    return await navigate(args);
-                case 'get_console_logs':
-                    return await getConsoleLogs(args);
-                case 'inspect_element':
-                    return await inspectElement(args);
-                // Debugger tools (consolidated)
-                case 'enable_debug_tools':
-                    return await enableDebugTools(args);
-                case 'breakpoint':
-                    return await breakpoint(args);
-                case 'step':
-                    return await step(args);
-                case 'execution':
-                    return await execution(args);
-                case 'call_stack':
-                    return await callStack(args);
-                case 'evaluate':
-                    return await evaluate(args);
-                case 'pause_on_exceptions':
-                    return await pauseOnExceptions(args);
-                default:
-                    throw new Error(`Unknown tool: ${name}`);
-            }
-        }
+        return await handler.invoke(args);
     }
     catch (error) {
+        // PRESERVED: Error handling exactly as original (lines 1183-1204)
         const toolName = request.params.name;
         const connectionId = request.params.arguments?.connection_id;
         const classified = classifyError(error, toolName, connectionId);

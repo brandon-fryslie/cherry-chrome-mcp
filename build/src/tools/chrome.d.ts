@@ -38,9 +38,34 @@ export declare function chromeLaunch(args: {
     isError?: boolean;
 }>;
 /**
- * CONSOLIDATED: chrome - Connect or launch Chrome
+ * CONSOLIDATED: connect - Smart Chrome connection
  *
- * Replaces chrome_connect and chrome_launch with a single tool.
+ * Behavior depends on whether port is provided:
+ * - If port IS provided: verify something is running on that port and connect to it
+ * - If port is NOT provided: launch a new Chrome on a random port (15000-18000),
+ *   navigate to the required URL, and return useful page context
+ *
+ * This replaces both chrome_connect and chrome_launch with unified, smarter behavior.
+ */
+export declare function connect(args: {
+    url: string;
+    port?: number;
+    connection_id?: string;
+    headless?: boolean;
+    user_data_dir?: string;
+    extra_args?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
+/**
+ * LEGACY: chrome - Connect or launch Chrome (action-based)
+ *
+ * This is the old action-based tool. Kept for backward compatibility
+ * but the new `connect` tool is preferred.
  */
 export declare function chrome(args: {
     action: 'connect' | 'launch';

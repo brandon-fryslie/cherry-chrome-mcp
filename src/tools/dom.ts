@@ -573,7 +573,7 @@ export async function navigate(args: {
 
     // Add context if requested
     if (includeContext) {
-      const context = await gatherNavigateContext(page);
+      const context = await gatherNavigateContext(page, args.connection_id);
       if (context) {
         response += '\n' + context;
       }
@@ -586,18 +586,64 @@ export async function navigate(args: {
 }
 
 /**
+ * Format a single log with optional stack trace expansion
+ */
+function formatLogWithStack(log: {
+  level: string;
+  text: string;
+  timestamp: number;
+  url?: string;
+  lineNumber?: number;
+  stackTrace?: string;
+  stackLocations?: Array<{ url?: string; lineNumber?: number; columnNumber?: number }>;
+}, expandErrors: boolean): string[] {
+  const lines: string[] = [];
+  const timestamp = new Date(log.timestamp).toISOString().split('T')[1].slice(0, 12);
+  const location = log.url ? ` (${log.url}${log.lineNumber ? `:${log.lineNumber}` : ''})` : '';
+
+  lines.push(`[${timestamp}] [${log.level.toUpperCase()}] ${log.text}${location}`);
+
+  // Include stack trace for errors when expand_errors is true
+  if (expandErrors && log.level === 'error') {
+    if (log.stackTrace) {
+      // Full Error.stack string - indent each line
+      const stackLines = log.stackTrace.split('\n').slice(1); // Skip first line (error message, already shown)
+      for (const stackLine of stackLines) {
+        if (stackLine.trim()) {
+          lines.push(`    ${stackLine.trim()}`);
+        }
+      }
+    } else if (log.stackLocations && log.stackLocations.length > 0) {
+      // Fall back to Puppeteer stack locations
+      lines.push('    Stack trace:');
+      for (const loc of log.stackLocations) {
+        const file = loc.url?.split('/').pop() || loc.url || 'unknown';
+        const line = loc.lineNumber !== undefined ? `:${loc.lineNumber}` : '';
+        const col = loc.columnNumber !== undefined ? `:${loc.columnNumber}` : '';
+        lines.push(`      at ${file}${line}${col}`);
+      }
+    }
+  }
+
+  return lines;
+}
+
+/**
  * Get console log messages from the browser.
  *
  * Console messages are captured automatically when connected.
  * Returns the most recent messages (default: 3).
+ * Use expand_errors: true to include full stack traces for error messages.
  */
 export async function getConsoleLogs(args: {
   filter_level?: string;
   limit?: number;
+  expand_errors?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const filterLevel = args.filter_level ?? 'all';
   const limit = args.limit ?? 3;
+  const expandErrors = args.expand_errors ?? false;
 
   try {
     // Verify connection exists using throwing method
@@ -644,27 +690,49 @@ export async function getConsoleLogs(args: {
       return successResponse(output.join('\n'));
     }
 
-    // Get most recent logs up to limit
-    const recentLogs = filteredLogs.slice(-limit);
-    const totalCount = filteredLogs.length;
-
     output.push('--- CONSOLE MESSAGES ---');
-    output.push(
-      `Showing ${recentLogs.length} of ${totalCount}${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}:`
-    );
-    output.push('');
 
-    // Compress logs using pattern detection
-    const compressionResult = compressLogs(recentLogs);
-    const formattedLogs = formatCompressedLogs(compressionResult);
-
-    // Show compression stats if meaningful compression occurred
-    if (compressionResult.compressionRatio > 0.2) {
-      output.push(`[Pattern compression: ${recentLogs.length} → ${compressionResult.compressedCount} lines (${Math.round(compressionResult.compressionRatio * 100)}% reduction)]`);
+    if (expandErrors) {
+      // When expanding errors, skip compression and apply limit to raw logs
+      const recentLogs = filteredLogs.slice(-limit);
+      output.push(
+        `Showing ${recentLogs.length} of ${filteredLogs.length}${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''} (with stack traces):`
+      );
       output.push('');
-    }
 
-    output.push(...formattedLogs);
+      for (const log of recentLogs) {
+        const logLines = formatLogWithStack(log, true);
+        output.push(...logLines);
+      }
+    } else {
+      // Compress ALL logs first, then apply limit to compressed result
+      const compressionResult = compressLogs(filteredLogs);
+
+      // Apply limit to compressed items (from the end, most recent)
+      const totalCompressedItems = compressionResult.compressed.length;
+      const limitedItems = compressionResult.compressed.slice(-limit);
+
+      // Recalculate stats for limited output
+      const limitedResult = {
+        ...compressionResult,
+        compressed: limitedItems,
+      };
+      const formattedLogs = formatCompressedLogs(limitedResult);
+
+      // Show stats
+      const showing = limitedItems.length;
+      output.push(
+        `Showing ${showing} of ${totalCompressedItems} compressed entries (${filteredLogs.length} raw messages)${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}:`
+      );
+
+      // Show compression stats if meaningful compression occurred
+      if (compressionResult.compressionRatio > 0.2) {
+        output.push(`[Pattern compression: ${filteredLogs.length} → ${totalCompressedItems} entries (${Math.round(compressionResult.compressionRatio * 100)}% reduction)]`);
+      }
+      output.push('');
+
+      output.push(...formattedLogs);
+    }
 
     return successResponse(output.join('\n'));
   } catch (error) {
