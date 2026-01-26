@@ -159,6 +159,19 @@ describe('ToolRegistry', () => {
 
       assert.strictEqual(tools1, tools2);
     });
+
+    it('should return frozen tools array', () => {
+      const tools = [testTool1, testTool2];
+      const handlers = new Map<string, ToolHandler>([
+        ['test_tool_1', createTestHandler('test_tool_1', testTool1)],
+        ['test_tool_2', createTestHandler('test_tool_2', testTool2)],
+      ]);
+
+      const registry = createToolRegistry(tools, handlers);
+      const allTools = registry.getAllTools();
+
+      assert.ok(Object.isFrozen(allTools), 'Tools array should be frozen');
+    });
   });
 
   describe('size', () => {

@@ -827,6 +827,22 @@ function findTool(tools, name) {
     return tool;
 }
 /**
+ * Register a tool handler with automatic name deduplication.
+ * Reduces triple-name pattern to single name usage.
+ *
+ * @param handlers - The handler map to register into
+ * @param name - Tool name (appears once, not three times)
+ * @param tools - Tool definition array to search
+ * @param fn - Tool implementation function
+ */
+function addHandler(handlers, name, tools, fn) {
+    handlers.set(name, {
+        name,
+        definition: findTool(tools, name),
+        invoke: async (args) => fn(args),
+    });
+}
+/**
  * Create tool handlers based on feature toggle.
  *
  * Phase 2: Handler Mappings
@@ -841,178 +857,80 @@ function findTool(tools, name) {
 function createToolHandlers(useLegacy) {
     const handlers = new Map();
     const tools = useLegacy ? legacyTools : smartTools;
-    // Shared DOM tools (6 tools)
-    handlers.set('query_elements', {
-        name: 'query_elements',
-        definition: findTool(tools, 'query_elements'),
-        invoke: async (args) => queryElements(args),
-    });
-    handlers.set('click_element', {
-        name: 'click_element',
-        definition: findTool(tools, 'click_element'),
-        invoke: async (args) => clickElement(args),
-    });
-    handlers.set('fill_element', {
-        name: 'fill_element',
-        definition: findTool(tools, 'fill_element'),
-        invoke: async (args) => fillElement(args),
-    });
-    handlers.set('navigate', {
-        name: 'navigate',
-        definition: findTool(tools, 'navigate'),
-        invoke: async (args) => navigate(args),
-    });
-    handlers.set('get_console_logs', {
-        name: 'get_console_logs',
-        definition: findTool(tools, 'get_console_logs'),
-        invoke: async (args) => getConsoleLogs(args),
-    });
-    handlers.set('inspect_element', {
-        name: 'inspect_element',
-        definition: findTool(tools, 'inspect_element'),
-        invoke: async (args) => inspectElement(args),
-    });
-    // Shared connection tools (3 tools)
-    handlers.set('chrome_list_connections', {
-        name: 'chrome_list_connections',
-        definition: findTool(tools, 'chrome_list_connections'),
-        invoke: async (args) => chromeListConnections(),
-    });
-    handlers.set('chrome_switch_connection', {
-        name: 'chrome_switch_connection',
-        definition: findTool(tools, 'chrome_switch_connection'),
-        invoke: async (args) => chromeSwitchConnection(args),
-    });
-    handlers.set('chrome_disconnect', {
-        name: 'chrome_disconnect',
-        definition: findTool(tools, 'chrome_disconnect'),
-        invoke: async (args) => chromeDisconnect(args),
-    });
+    /**
+     * Shared DOM tools (6 tools)
+     *
+     * Element query, interaction, navigation, and console operations.
+     * Available in both legacy and smart modes.
+     *
+     * Tools: query_elements, click_element, fill_element, navigate,
+     *        get_console_logs, inspect_element
+     */
+    addHandler(handlers, 'query_elements', tools, queryElements);
+    addHandler(handlers, 'click_element', tools, clickElement);
+    addHandler(handlers, 'fill_element', tools, fillElement);
+    addHandler(handlers, 'navigate', tools, navigate);
+    addHandler(handlers, 'get_console_logs', tools, getConsoleLogs);
+    addHandler(handlers, 'inspect_element', tools, inspectElement);
+    /**
+     * Shared connection tools (3 tools)
+     *
+     * Chrome instance management operations available in both modes.
+     *
+     * Tools: chrome_list_connections, chrome_switch_connection, chrome_disconnect
+     */
+    addHandler(handlers, 'chrome_list_connections', tools, chromeListConnections);
+    addHandler(handlers, 'chrome_switch_connection', tools, chromeSwitchConnection);
+    addHandler(handlers, 'chrome_disconnect', tools, chromeDisconnect);
     if (useLegacy) {
-        // Legacy-specific tools (14 tools)
-        handlers.set('chrome_connect', {
-            name: 'chrome_connect',
-            definition: findTool(tools, 'chrome_connect'),
-            invoke: async (args) => chromeConnect(args),
-        });
-        handlers.set('chrome_launch', {
-            name: 'chrome_launch',
-            definition: findTool(tools, 'chrome_launch'),
-            invoke: async (args) => chromeLaunch(args),
-        });
-        handlers.set('list_targets', {
-            name: 'list_targets',
-            definition: findTool(tools, 'list_targets'),
-            invoke: async (args) => listTargets(args),
-        });
-        handlers.set('switch_target', {
-            name: 'switch_target',
-            definition: findTool(tools, 'switch_target'),
-            invoke: async (args) => switchTarget(args),
-        });
-        handlers.set('debugger_enable', {
-            name: 'debugger_enable',
-            definition: findTool(tools, 'debugger_enable'),
-            invoke: async (args) => debuggerEnable(args),
-        });
-        handlers.set('debugger_set_breakpoint', {
-            name: 'debugger_set_breakpoint',
-            definition: findTool(tools, 'debugger_set_breakpoint'),
-            invoke: async (args) => debuggerSetBreakpoint(args),
-        });
-        handlers.set('debugger_get_call_stack', {
-            name: 'debugger_get_call_stack',
-            definition: findTool(tools, 'debugger_get_call_stack'),
-            invoke: async (args) => debuggerGetCallStack(args),
-        });
-        handlers.set('debugger_evaluate_on_call_frame', {
-            name: 'debugger_evaluate_on_call_frame',
-            definition: findTool(tools, 'debugger_evaluate_on_call_frame'),
-            invoke: async (args) => debuggerEvaluateOnCallFrame(args),
-        });
-        handlers.set('debugger_step_over', {
-            name: 'debugger_step_over',
-            definition: findTool(tools, 'debugger_step_over'),
-            invoke: async (args) => debuggerStepOver(args),
-        });
-        handlers.set('debugger_step_into', {
-            name: 'debugger_step_into',
-            definition: findTool(tools, 'debugger_step_into'),
-            invoke: async (args) => debuggerStepInto(args),
-        });
-        handlers.set('debugger_step_out', {
-            name: 'debugger_step_out',
-            definition: findTool(tools, 'debugger_step_out'),
-            invoke: async (args) => debuggerStepOut(args),
-        });
-        handlers.set('debugger_resume', {
-            name: 'debugger_resume',
-            definition: findTool(tools, 'debugger_resume'),
-            invoke: async (args) => debuggerResume(args),
-        });
-        handlers.set('debugger_pause', {
-            name: 'debugger_pause',
-            definition: findTool(tools, 'debugger_pause'),
-            invoke: async (args) => debuggerPause(args),
-        });
-        handlers.set('debugger_remove_breakpoint', {
-            name: 'debugger_remove_breakpoint',
-            definition: findTool(tools, 'debugger_remove_breakpoint'),
-            invoke: async (args) => debuggerRemoveBreakpoint(args),
-        });
-        handlers.set('debugger_set_pause_on_exceptions', {
-            name: 'debugger_set_pause_on_exceptions',
-            definition: findTool(tools, 'debugger_set_pause_on_exceptions'),
-            invoke: async (args) => debuggerSetPauseOnExceptions(args),
-        });
+        /**
+         * Legacy-specific tools (14 tools)
+         *
+         * Granular Chrome connection and debugger operations.
+         * Only available when USE_LEGACY_TOOLS=true.
+         *
+         * Connection: chrome_connect, chrome_launch, list_targets, switch_target
+         * Debugger: debugger_enable, debugger_set_breakpoint, debugger_get_call_stack,
+         *           debugger_evaluate_on_call_frame, debugger_step_over, debugger_step_into,
+         *           debugger_step_out, debugger_resume, debugger_pause,
+         *           debugger_remove_breakpoint, debugger_set_pause_on_exceptions
+         */
+        addHandler(handlers, 'chrome_connect', tools, chromeConnect);
+        addHandler(handlers, 'chrome_launch', tools, chromeLaunch);
+        addHandler(handlers, 'list_targets', tools, listTargets);
+        addHandler(handlers, 'switch_target', tools, switchTarget);
+        addHandler(handlers, 'debugger_enable', tools, debuggerEnable);
+        addHandler(handlers, 'debugger_set_breakpoint', tools, debuggerSetBreakpoint);
+        addHandler(handlers, 'debugger_get_call_stack', tools, debuggerGetCallStack);
+        addHandler(handlers, 'debugger_evaluate_on_call_frame', tools, debuggerEvaluateOnCallFrame);
+        addHandler(handlers, 'debugger_step_over', tools, debuggerStepOver);
+        addHandler(handlers, 'debugger_step_into', tools, debuggerStepInto);
+        addHandler(handlers, 'debugger_step_out', tools, debuggerStepOut);
+        addHandler(handlers, 'debugger_resume', tools, debuggerResume);
+        addHandler(handlers, 'debugger_pause', tools, debuggerPause);
+        addHandler(handlers, 'debugger_remove_breakpoint', tools, debuggerRemoveBreakpoint);
+        addHandler(handlers, 'debugger_set_pause_on_exceptions', tools, debuggerSetPauseOnExceptions);
     }
     else {
-        // Smart-specific tools (8 tools)
-        handlers.set('connect', {
-            name: 'connect',
-            definition: findTool(tools, 'connect'),
-            invoke: async (args) => connect(args),
-        });
-        handlers.set('target', {
-            name: 'target',
-            definition: findTool(tools, 'target'),
-            invoke: async (args) => target(args),
-        });
-        handlers.set('enable_debug_tools', {
-            name: 'enable_debug_tools',
-            definition: findTool(tools, 'enable_debug_tools'),
-            invoke: async (args) => enableDebugTools(args),
-        });
-        handlers.set('breakpoint', {
-            name: 'breakpoint',
-            definition: findTool(tools, 'breakpoint'),
-            invoke: async (args) => breakpoint(args),
-        });
-        handlers.set('step', {
-            name: 'step',
-            definition: findTool(tools, 'step'),
-            invoke: async (args) => step(args),
-        });
-        handlers.set('execution', {
-            name: 'execution',
-            definition: findTool(tools, 'execution'),
-            invoke: async (args) => execution(args),
-        });
-        handlers.set('call_stack', {
-            name: 'call_stack',
-            definition: findTool(tools, 'call_stack'),
-            invoke: async (args) => callStack(args),
-        });
-        handlers.set('evaluate', {
-            name: 'evaluate',
-            definition: findTool(tools, 'evaluate'),
-            invoke: async (args) => evaluate(args),
-        });
-        handlers.set('pause_on_exceptions', {
-            name: 'pause_on_exceptions',
-            definition: findTool(tools, 'pause_on_exceptions'),
-            invoke: async (args) => pauseOnExceptions(args),
-        });
+        /**
+         * Smart-specific tools (8 tools)
+         *
+         * Consolidated action-based Chrome connection and debugger operations.
+         * Only available when USE_LEGACY_TOOLS=false (default).
+         *
+         * Connection: connect, target
+         * Debugger: enable_debug_tools, breakpoint, step, execution,
+         *           call_stack, evaluate, pause_on_exceptions
+         */
+        addHandler(handlers, 'connect', tools, connect);
+        addHandler(handlers, 'target', tools, target);
+        addHandler(handlers, 'enable_debug_tools', tools, enableDebugTools);
+        addHandler(handlers, 'breakpoint', tools, breakpoint);
+        addHandler(handlers, 'step', tools, step);
+        addHandler(handlers, 'execution', tools, execution);
+        addHandler(handlers, 'call_stack', tools, callStack);
+        addHandler(handlers, 'evaluate', tools, evaluate);
+        addHandler(handlers, 'pause_on_exceptions', tools, pauseOnExceptions);
     }
     return handlers;
 }
@@ -1020,6 +938,16 @@ function createToolHandlers(useLegacy) {
 // Initialize registry at module load (eager initialization)
 const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS);
 const toolRegistry = createToolRegistry(activeTools, toolHandlers);
+/**
+ * Type guard for errors with errorInfo property.
+ */
+function hasErrorInfo(error) {
+    return (error !== null &&
+        typeof error === 'object' &&
+        'errorInfo' in error &&
+        error.errorInfo !== null &&
+        typeof error.errorInfo === 'object');
+}
 /**
  * Classify an error by type and extract metadata.
  *
@@ -1030,11 +958,11 @@ const toolRegistry = createToolRegistry(activeTools, toolHandlers);
  */
 function classifyError(error, toolName, connectionId) {
     // Check if error has errorInfo property (our custom errors)
-    if (error && typeof error === 'object' && 'errorInfo' in error) {
+    if (hasErrorInfo(error)) {
         const info = error.errorInfo;
         return {
             errorType: info.errorType,
-            message: error instanceof Error ? error.message : String(error),
+            message: error.message,
             recoverable: info.recoverable,
             suggestion: info.suggestion,
             toolName,
@@ -1105,6 +1033,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!handler) {
             throw new Error(`Unknown tool: ${name}`);
         }
+        // ToolResult matches CallToolResult structure but needs explicit cast
         return await handler.invoke(args);
     }
     catch (error) {
@@ -1117,10 +1046,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const errorMessage = classified.suggestion
             ? `${classified.message}\n\nSuggestion: ${classified.suggestion}`
             : classified.message;
+        // Return error with custom metadata fields for internal tracking
         return {
             content: [{ type: 'text', text: errorMessage }],
             isError: true,
-            // Metadata for client-side error handling
+            // Metadata for client-side error handling (not part of MCP spec but tolerated)
             _toolName: toolName,
             _errorType: classified.errorType,
             _recoverable: classified.recoverable,

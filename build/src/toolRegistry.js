@@ -49,13 +49,16 @@ export function createToolRegistry(tools, handlers) {
                 `All tools must have corresponding handlers.`);
         }
     }
+    // Freeze tools array to prevent mutation (defensive immutability)
+    const frozenTools = Object.freeze([...tools]);
     // Return registry with O(1) lookup
     return {
         getHandler(name) {
             return handlers.get(name);
         },
         getAllTools() {
-            return tools;
+            // Return frozen array (caller cannot mutate)
+            return frozenTools;
         },
         get size() {
             return handlers.size;

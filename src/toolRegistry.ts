@@ -120,6 +120,9 @@ export function createToolRegistry(
     }
   }
 
+  // Freeze tools array to prevent mutation (defensive immutability)
+  const frozenTools = Object.freeze([...tools]) as readonly Tool[];
+
   // Return registry with O(1) lookup
   return {
     getHandler(name: string): ToolHandler | undefined {
@@ -127,7 +130,8 @@ export function createToolRegistry(
     },
 
     getAllTools(): Tool[] {
-      return tools;
+      // Return frozen array (caller cannot mutate)
+      return frozenTools as Tool[];
     },
 
     get size(): number {

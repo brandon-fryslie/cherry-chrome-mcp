@@ -1,0 +1,1234 @@
+#!/usr/bin/env node
+
+/**
+ * Cherry Chrome MCP Server
+ * CSS selector-based Chrome DevTools automation with debugger support
+ *
+ * Ported from Python chrome-debugger-mcp wrapper
+ */
+
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+
+import { USE_LEGACY_TOOLS } from './config.js';
+import { browserManager } from './browser.js';
+import { createToolRegistry, type ToolHandler } from './toolRegistry.js';
+import type { ToolResult } from './types.js';
+
+// Import all tools (legacy and new consolidated)
+import {
+  chromeConnect,
+  chromeLaunch,
+  chromeListConnections,
+  chromeSwitchConnection,
+  chromeDisconnect,
+  listTargets,
+  switchTarget,
+  chrome,
+  connect,
+  target,
+  enableDebugTools,
+  queryElements,
+  clickElement,
+  fillElement,
+  navigate,
+  getConsoleLogs,
+  inspectElement,
+  debuggerEnable,
+  debuggerSetBreakpoint,
+  debuggerGetCallStack,
+  debuggerEvaluateOnCallFrame,
+  debuggerStepOver,
+  debuggerStepInto,
+  debuggerStepOut,
+  debuggerResume,
+  debuggerPause,
+  debuggerRemoveBreakpoint,
+  debuggerSetPauseOnExceptions,
+  step,
+  execution,
+  breakpoint,
+  callStack,
+  evaluate,
+  pauseOnExceptions,
+} from './tools/index.js';
+
+const server = new Server(
+  {
+    name: 'cherry-chrome-mcp',
+    version: '0.1.0',
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
+
+/**
+ * Shared tool metadata (eliminates duplication between legacy and smart modes)
+ */
+const toolMetadata = {
+  dom: {
+    queryElements: {
+      description:
+        'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'CSS selector to query (e.g., ".class", "#id", "button")',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of elements to return',
+            default: 5,
+          },
+          text_contains: {
+            type: 'string',
+            description: 'Filter to elements containing this text (case-insensitive partial match)',
+          },
+          include_hidden: {
+            type: 'boolean',
+            description: 'Include hidden elements (display:none, visibility:hidden, zero size). Default: false (visible only)',
+            default: false,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use (uses active if not specified)',
+          },
+        },
+        required: ['selector'],
+      },
+    },
+    clickElement: {
+      description:
+        'Click an element matching the CSS selector. Use query_elements first to verify the element exists.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'CSS selector for the element',
+          },
+          index: {
+            type: 'number',
+            description: 'Which matching element to click (0 = first)',
+            default: 0,
+          },
+          include_context: {
+            type: 'boolean',
+            description: 'Include element state after click (default: true)',
+            default: true,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+        required: ['selector'],
+      },
+    },
+    fillElement: {
+      description:
+        'Fill text into an input element matching the CSS selector. Use query_elements first to verify the input exists.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'CSS selector for the input element',
+          },
+          text: {
+            type: 'string',
+            description: 'Text to enter',
+          },
+          index: {
+            type: 'number',
+            description: 'Which matching element to fill (0 = first)',
+            default: 0,
+          },
+          submit: {
+            type: 'boolean',
+            description: 'Press Enter after filling',
+            default: false,
+          },
+          include_context: {
+            type: 'boolean',
+            description: 'Include element state after fill (default: true)',
+            default: true,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+        required: ['selector', 'text'],
+      },
+    },
+    navigate: {
+      description: 'Navigate to a URL and wait for page load.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          url: {
+            type: 'string',
+            description: 'URL to navigate to',
+          },
+          include_context: {
+            type: 'boolean',
+            description: 'Include page title and element summary (default: true)',
+            default: true,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+        required: ['url'],
+      },
+    },
+    getConsoleLogs: {
+      description:
+        'Get console log messages from the browser. Messages are captured automatically. Use expand_errors to include full stack traces for error messages.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          filter_level: {
+            type: 'string',
+            description: 'Filter by level: "all", "error", "warning", "info", "debug", "log"',
+            default: 'all',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of messages to return (most recent)',
+            default: 3,
+          },
+          expand_errors: {
+            type: 'boolean',
+            description: 'Include full stack traces for error messages (default: false)',
+            default: false,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+      },
+    },
+    inspectElement: {
+      description:
+        'Discover CSS selectors from natural language descriptions and element attributes. Returns ranked selector candidates with stability scores. Use when you know what element you want but not its exact selector.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          description: {
+            type: 'string',
+            description: 'Natural language description of element (e.g., "login button", "email input")',
+          },
+          text_contains: {
+            type: 'string',
+            description: 'Text content to match (exact substring)',
+          },
+          tag: {
+            type: 'string',
+            description: 'Filter by HTML tag (button, input, a, div, etc.)',
+          },
+          attributes: {
+            type: 'object',
+            description: 'Filter by element attributes',
+            properties: {
+              role: {
+                type: 'string',
+                description: 'ARIA role attribute',
+              },
+              aria_label: {
+                type: 'string',
+                description: 'ARIA label attribute',
+              },
+              data_testid: {
+                type: 'string',
+                description: 'data-testid attribute (supports wildcard * matching)',
+              },
+              placeholder: {
+                type: 'string',
+                description: 'Placeholder text for inputs',
+              },
+              type: {
+                type: 'string',
+                description: 'Input type (text, password, email, etc.)',
+              },
+            },
+          },
+          near: {
+            type: 'object',
+            description: 'Find elements spatially near another element',
+            properties: {
+              selector: {
+                type: 'string',
+                description: 'Reference selector to search near',
+              },
+              direction: {
+                type: 'string',
+                description: 'Spatial direction filter',
+                enum: ['above', 'below', 'left', 'right', 'inside'],
+              },
+            },
+            required: ['selector'],
+          },
+          strict_stability: {
+            type: 'boolean',
+            description: 'Only return high-stability selectors (ID, data-testid, aria-label)',
+            default: false,
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum candidates to return (default: 3)',
+            default: 3,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+      },
+    },
+  },
+  connection: {
+    chromeListConnections: {
+      description:
+        'List all active Chrome connections with their status (URL, active, paused state).',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {},
+      },
+    },
+    chromeSwitchConnection: {
+      description:
+        'Switch the active Chrome connection. All tools will use the active connection.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          connection_id: {
+            type: 'string',
+            description: 'ID of the connection to make active',
+          },
+        },
+        required: ['connection_id'],
+      },
+    },
+    chromeDisconnect: {
+      description:
+        'Disconnect from a specific Chrome instance. If you disconnect the active connection, the next available will become active.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          connection_id: {
+            type: 'string',
+            description: 'ID of the connection to disconnect',
+          },
+        },
+        required: ['connection_id'],
+      },
+    },
+  },
+};
+
+/**
+ * Legacy tool definitions (backward compatible)
+ */
+const legacyTools: Tool[] = [
+  // Chrome Connection Management
+  {
+    name: 'chrome_connect',
+    description:
+      'Connect to a Chrome instance running with remote debugging enabled. Chrome must be launched with --remote-debugging-port flag.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        port: {
+          type: 'number',
+          description: 'Chrome remote debugging port',
+          default: 9222,
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Unique identifier for this connection',
+          default: 'default',
+        },
+        host: {
+          type: 'string',
+          description: 'Chrome host',
+          default: 'localhost',
+        },
+      },
+    },
+  },
+  {
+    name: 'chrome_launch',
+    description:
+      'Launch a new Chrome instance with remote debugging enabled. Automatically connects after startup.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        debug_port: {
+          type: 'number',
+          description: 'Remote debugging port',
+          default: 9222,
+        },
+        headless: {
+          type: 'boolean',
+          description: 'Run in headless mode',
+          default: false,
+        },
+        user_data_dir: {
+          type: 'string',
+          description: 'Custom user data directory path',
+        },
+        extra_args: {
+          type: 'string',
+          description:
+            'Additional Chrome flags as space-separated string (e.g., "--disable-gpu --window-size=1920,1080")',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Connection ID for this instance (default: auto-generate from port)',
+          default: 'auto',
+        },
+      },
+    },
+  },
+  // Connection tools (from shared metadata)
+  { name: 'chrome_list_connections', ...toolMetadata.connection.chromeListConnections },
+  { name: 'chrome_switch_connection', ...toolMetadata.connection.chromeSwitchConnection },
+  { name: 'chrome_disconnect', ...toolMetadata.connection.chromeDisconnect },
+  {
+    name: 'list_targets',
+    description:
+      'List all targets (pages, workers, service workers) for a connection. Shows which target is currently active.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use (uses active if not specified)',
+        },
+      },
+    },
+  },
+  {
+    name: 'switch_target',
+    description:
+      'Switch to a different target (page) within the current connection. Can switch by index, title pattern, or URL pattern.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: {
+          type: 'number',
+          description: 'Target index from list_targets (e.g., 0 for first target)',
+        },
+        title: {
+          type: 'string',
+          description: 'Partial title match (e.g., "GitKraken Desktop")',
+        },
+        url: {
+          type: 'string',
+          description: 'URL pattern with * wildcards (e.g., "*index.html*")',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use (uses active if not specified)',
+        },
+      },
+    },
+  },
+  // DOM Tools (from shared metadata)
+  { name: 'query_elements', ...toolMetadata.dom.queryElements },
+  { name: 'click_element', ...toolMetadata.dom.clickElement },
+  { name: 'fill_element', ...toolMetadata.dom.fillElement },
+  { name: 'navigate', ...toolMetadata.dom.navigate },
+  { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
+  { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
+  // Debugger Tools
+  {
+    name: 'debugger_enable',
+    description:
+      'Enable the JavaScript debugger. Must be called before any other debugger operations.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'debugger_set_breakpoint',
+    description:
+      'Set a breakpoint at a specific line in a source file. Debugger must be enabled first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Full URL or path of the script (e.g., "http://localhost:3000/main.js")',
+        },
+        line_number: {
+          type: 'number',
+          description: 'Line number to break on (1-indexed)',
+        },
+        column_number: {
+          type: 'number',
+          description: 'Column number (0-indexed)',
+          default: 0,
+        },
+        condition: {
+          type: 'string',
+          description: 'Optional conditional expression (breakpoint only triggers if true)',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['url', 'line_number'],
+    },
+  },
+  {
+    name: 'debugger_get_call_stack',
+    description:
+      'Get the current call stack when execution is paused. Only works when paused at a breakpoint.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'debugger_evaluate_on_call_frame',
+    description:
+      'Evaluate a JavaScript expression in the context of a specific call frame. Only works when paused.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        call_frame_id: {
+          type: 'string',
+          description: 'Call frame ID from debugger_get_call_stack()',
+        },
+        expression: {
+          type: 'string',
+          description: 'JavaScript expression to evaluate',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['call_frame_id', 'expression'],
+    },
+  },
+  {
+    name: 'debugger_step_over',
+    description:
+      'Step over the current line (execute and pause at next line). Only works when paused.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'debugger_step_into',
+    description:
+      'Step into the current function call. Only works when paused at a function call.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'debugger_step_out',
+    description:
+      'Step out of the current function (continue until function returns). Only works when paused.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'debugger_resume',
+    description:
+      'Resume execution after being paused. Will continue until next breakpoint or exception.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'debugger_pause',
+    description:
+      'Pause JavaScript execution as soon as possible. Use debugger_get_call_stack() after pausing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'debugger_remove_breakpoint',
+    description: 'Remove a previously set breakpoint.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        breakpoint_id: {
+          type: 'string',
+          description: 'Breakpoint ID returned from debugger_set_breakpoint()',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['breakpoint_id'],
+    },
+  },
+  {
+    name: 'debugger_set_pause_on_exceptions',
+    description: 'Configure whether to pause when exceptions are thrown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        state: {
+          type: 'string',
+          description: '"none" (no pause), "uncaught" (only uncaught), or "all" (all exceptions)',
+          enum: ['none', 'uncaught', 'all'],
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['state'],
+    },
+  },
+];
+
+/**
+ * Smart consolidated tool definitions (new approach)
+ */
+const smartTools: Tool[] = [
+  // Chrome Connection Management (consolidated)
+  {
+    name: 'connect',
+    description:
+      'Connect to Chrome and navigate to a URL. If port is provided, connects to existing Chrome on that port (verifies something is running first). If port is omitted, launches a new Chrome instance on a random port (15000-18000). Always navigates to the URL and returns page context.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'URL to navigate to after connecting',
+        },
+        port: {
+          type: 'number',
+          description: 'Chrome remote debugging port. If provided, connects to existing Chrome. If omitted, launches new Chrome on random port.',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Unique identifier for this connection',
+          default: 'default',
+        },
+        headless: {
+          type: 'boolean',
+          description: 'Run in headless mode (only when launching new Chrome)',
+          default: true,
+        },
+        user_data_dir: {
+          type: 'string',
+          description: 'Custom user data directory path (only when launching new Chrome)',
+        },
+        extra_args: {
+          type: 'string',
+          description: 'Additional Chrome flags (only when launching new Chrome)',
+        },
+      },
+      required: ['url'],
+    },
+  },
+  // Connection tools (from shared metadata)
+  { name: 'chrome_list_connections', ...toolMetadata.connection.chromeListConnections },
+  { name: 'chrome_switch_connection', ...toolMetadata.connection.chromeSwitchConnection },
+  { name: 'chrome_disconnect', ...toolMetadata.connection.chromeDisconnect },
+  {
+    name: 'target',
+    description:
+      'List or switch browser targets (pages, workers). Consolidates list_targets and switch_target into a single action-based tool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          description: '"list" to show all targets or "switch" to change target',
+          enum: ['list', 'switch'],
+        },
+        index: {
+          type: 'number',
+          description: 'Target index from list (for switch only)',
+        },
+        title: {
+          type: 'string',
+          description: 'Partial title match (for switch only)',
+        },
+        url: {
+          type: 'string',
+          description: 'URL pattern with * wildcards (for switch only)',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use (uses active if not specified)',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  // DOM Tools (from shared metadata)
+  { name: 'query_elements', ...toolMetadata.dom.queryElements },
+  { name: 'click_element', ...toolMetadata.dom.clickElement },
+  { name: 'fill_element', ...toolMetadata.dom.fillElement },
+  { name: 'navigate', ...toolMetadata.dom.navigate },
+  { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
+  { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
+  // Debugger Tools (consolidated)
+  {
+    name: 'enable_debug_tools',
+    description:
+      'Enable JavaScript debugger and unlock debugging tools. Must be called before setting breakpoints or stepping.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'breakpoint',
+    description:
+      'Set or remove breakpoints. Consolidates debugger_set_breakpoint and debugger_remove_breakpoint into a single action-based tool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          description: '"set" to add breakpoint or "remove" to delete it',
+          enum: ['set', 'remove'],
+        },
+        url: {
+          type: 'string',
+          description: 'Full URL or path of the script (for set only)',
+        },
+        line_number: {
+          type: 'number',
+          description: 'Line number to break on (1-indexed, for set only)',
+        },
+        column_number: {
+          type: 'number',
+          description: 'Column number (0-indexed, for set only)',
+          default: 0,
+        },
+        condition: {
+          type: 'string',
+          description: 'Optional conditional expression (for set only)',
+        },
+        breakpoint_id: {
+          type: 'string',
+          description: 'Breakpoint ID to remove (for remove only)',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'step',
+    description:
+      'Step through code execution. Consolidates debugger_step_over, debugger_step_into, and debugger_step_out into a single direction-based tool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        direction: {
+          type: 'string',
+          description: '"over" (next line), "into" (enter function), or "out" (exit function)',
+          enum: ['over', 'into', 'out'],
+        },
+        include_context: {
+          type: 'boolean',
+          description: 'Include new location and local variables with change markers (default: true)',
+          default: true,
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['direction'],
+    },
+  },
+  {
+    name: 'execution',
+    description:
+      'Control execution flow. Consolidates debugger_resume and debugger_pause into a single action-based tool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          description: '"resume" to continue execution or "pause" to break',
+          enum: ['resume', 'pause'],
+        },
+        include_context: {
+          type: 'boolean',
+          description: 'Include call stack and local variables when paused (default: true)',
+          default: true,
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'call_stack',
+    description:
+      'Get the current call stack when execution is paused. Only works when paused at a breakpoint.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+    },
+  },
+  {
+    name: 'evaluate',
+    description:
+      'Evaluate a JavaScript expression in the context of a specific call frame. Only works when paused.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        call_frame_id: {
+          type: 'string',
+          description: 'Call frame ID from call_stack()',
+        },
+        expression: {
+          type: 'string',
+          description: 'JavaScript expression to evaluate',
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['call_frame_id', 'expression'],
+    },
+  },
+  {
+    name: 'pause_on_exceptions',
+    description: 'Configure whether to pause when exceptions are thrown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        state: {
+          type: 'string',
+          description: '"none" (no pause), "uncaught" (only uncaught), or "all" (all exceptions)',
+          enum: ['none', 'uncaught', 'all'],
+        },
+        connection_id: {
+          type: 'string',
+          description: 'Chrome connection to use',
+        },
+      },
+      required: ['state'],
+    },
+  },
+];
+
+// Select tool set based on feature flag
+const activeTools = USE_LEGACY_TOOLS ? legacyTools : smartTools;
+
+/**
+ * Helper to find tool by name in an array
+ */
+function findTool(tools: Tool[], name: string): Tool {
+  const tool = tools.find(t => t.name === name);
+  if (!tool) {
+    throw new Error(`Tool definition not found: ${name}`);
+  }
+  return tool;
+}
+
+/**
+ * Register a tool handler with automatic name deduplication.
+ * Reduces triple-name pattern to single name usage.
+ *
+ * @param handlers - The handler map to register into
+ * @param name - Tool name (appears once, not three times)
+ * @param tools - Tool definition array to search
+ * @param fn - Tool implementation function
+ */
+function addHandler<F extends (...args: any[]) => Promise<ToolResult>>(
+  handlers: Map<string, ToolHandler>,
+  name: string,
+  tools: Tool[],
+  fn: F
+): void {
+  handlers.set(name, {
+    name,
+    definition: findTool(tools, name),
+    invoke: async (args: unknown) => fn(args as Parameters<F>[0]),
+  });
+}
+
+/**
+ * Create tool handlers based on feature toggle.
+ *
+ * Phase 2: Handler Mappings
+ * - Creates Map of tool name → ToolHandler
+ * - Preserves type casting pattern from original switch statements
+ * - Shared tools (6 DOM + 3 connection = 9 total) present in both modes
+ * - Legacy mode: 23 handlers (9 shared + 14 legacy-specific)
+ * - Smart mode: 17 handlers (9 shared + 8 smart-specific)
+ *
+ * Type Safety: Each handler casts args using Parameters<typeof toolFn>[0]
+ */
+function createToolHandlers(useLegacy: boolean): Map<string, ToolHandler> {
+  const handlers = new Map<string, ToolHandler>();
+  const tools = useLegacy ? legacyTools : smartTools;
+
+  /**
+   * Shared DOM tools (6 tools)
+   *
+   * Element query, interaction, navigation, and console operations.
+   * Available in both legacy and smart modes.
+   *
+   * Tools: query_elements, click_element, fill_element, navigate,
+   *        get_console_logs, inspect_element
+   */
+  addHandler(handlers, 'query_elements', tools, queryElements);
+  addHandler(handlers, 'click_element', tools, clickElement);
+  addHandler(handlers, 'fill_element', tools, fillElement);
+  addHandler(handlers, 'navigate', tools, navigate);
+  addHandler(handlers, 'get_console_logs', tools, getConsoleLogs);
+  addHandler(handlers, 'inspect_element', tools, inspectElement);
+
+  /**
+   * Shared connection tools (3 tools)
+   *
+   * Chrome instance management operations available in both modes.
+   *
+   * Tools: chrome_list_connections, chrome_switch_connection, chrome_disconnect
+   */
+  addHandler(handlers, 'chrome_list_connections', tools, chromeListConnections);
+  addHandler(handlers, 'chrome_switch_connection', tools, chromeSwitchConnection);
+  addHandler(handlers, 'chrome_disconnect', tools, chromeDisconnect);
+
+  if (useLegacy) {
+    /**
+     * Legacy-specific tools (14 tools)
+     *
+     * Granular Chrome connection and debugger operations.
+     * Only available when USE_LEGACY_TOOLS=true.
+     *
+     * Connection: chrome_connect, chrome_launch, list_targets, switch_target
+     * Debugger: debugger_enable, debugger_set_breakpoint, debugger_get_call_stack,
+     *           debugger_evaluate_on_call_frame, debugger_step_over, debugger_step_into,
+     *           debugger_step_out, debugger_resume, debugger_pause,
+     *           debugger_remove_breakpoint, debugger_set_pause_on_exceptions
+     */
+    addHandler(handlers, 'chrome_connect', tools, chromeConnect);
+    addHandler(handlers, 'chrome_launch', tools, chromeLaunch);
+    addHandler(handlers, 'list_targets', tools, listTargets);
+    addHandler(handlers, 'switch_target', tools, switchTarget);
+    addHandler(handlers, 'debugger_enable', tools, debuggerEnable);
+    addHandler(handlers, 'debugger_set_breakpoint', tools, debuggerSetBreakpoint);
+    addHandler(handlers, 'debugger_get_call_stack', tools, debuggerGetCallStack);
+    addHandler(handlers, 'debugger_evaluate_on_call_frame', tools, debuggerEvaluateOnCallFrame);
+    addHandler(handlers, 'debugger_step_over', tools, debuggerStepOver);
+    addHandler(handlers, 'debugger_step_into', tools, debuggerStepInto);
+    addHandler(handlers, 'debugger_step_out', tools, debuggerStepOut);
+    addHandler(handlers, 'debugger_resume', tools, debuggerResume);
+    addHandler(handlers, 'debugger_pause', tools, debuggerPause);
+    addHandler(handlers, 'debugger_remove_breakpoint', tools, debuggerRemoveBreakpoint);
+    addHandler(handlers, 'debugger_set_pause_on_exceptions', tools, debuggerSetPauseOnExceptions);
+  } else {
+    /**
+     * Smart-specific tools (8 tools)
+     *
+     * Consolidated action-based Chrome connection and debugger operations.
+     * Only available when USE_LEGACY_TOOLS=false (default).
+     *
+     * Connection: connect, target
+     * Debugger: enable_debug_tools, breakpoint, step, execution,
+     *           call_stack, evaluate, pause_on_exceptions
+     */
+    addHandler(handlers, 'connect', tools, connect);
+    addHandler(handlers, 'target', tools, target);
+    addHandler(handlers, 'enable_debug_tools', tools, enableDebugTools);
+    addHandler(handlers, 'breakpoint', tools, breakpoint);
+    addHandler(handlers, 'step', tools, step);
+    addHandler(handlers, 'execution', tools, execution);
+    addHandler(handlers, 'call_stack', tools, callStack);
+    addHandler(handlers, 'evaluate', tools, evaluate);
+    addHandler(handlers, 'pause_on_exceptions', tools, pauseOnExceptions);
+  }
+
+  return handlers;
+}
+
+// Phase 3: Registry Integration
+// Initialize registry at module load (eager initialization)
+const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS);
+const toolRegistry = createToolRegistry(activeTools, toolHandlers);
+
+/**
+ * Error metadata for classification and recovery guidance.
+ */
+interface ErrorInfo {
+  readonly errorType: 'CONNECTION' | 'DEBUGGER' | 'STATE' | 'EXECUTION' | 'UNKNOWN';
+  readonly recoverable: boolean;
+  readonly suggestion?: string;
+}
+
+/**
+ * Error object with attached classification metadata.
+ */
+interface ErrorWithInfo extends Error {
+  errorInfo: ErrorInfo;
+}
+
+/**
+ * Type guard for errors with errorInfo property.
+ */
+function hasErrorInfo(error: unknown): error is ErrorWithInfo {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'errorInfo' in error &&
+    error.errorInfo !== null &&
+    typeof error.errorInfo === 'object'
+  );
+}
+
+/**
+ * Tool arguments with optional connection_id.
+ */
+interface ToolArguments {
+  connection_id?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Classified error information for routing and observability.
+ */
+interface ClassifiedError {
+  errorType: 'CONNECTION' | 'DEBUGGER' | 'STATE' | 'EXECUTION' | 'UNKNOWN';
+  message: string;
+  recoverable: boolean;
+  suggestion?: string;
+  toolName?: string;
+  connectionId?: string;
+}
+
+/**
+ * Error tool result with custom metadata fields.
+ *
+ * Extends CallToolResult with internal metadata for error tracking.
+ * The metadata fields (_toolName, _errorType, _recoverable) are not part of the
+ * MCP spec but are tolerated by the protocol for internal use.
+ */
+type ErrorToolResult = CallToolResult & {
+  _toolName: string;
+  _errorType: string;
+  _recoverable: boolean;
+};
+
+/**
+ * Classify an error by type and extract metadata.
+ *
+ * Looks for errorInfo property on error object (added to custom error classes).
+ * Falls back to UNKNOWN for unexpected error types.
+ *
+ * Returns structured ClassifiedError with type, message, recovery info, and context.
+ */
+function classifyError(
+  error: unknown,
+  toolName: string,
+  connectionId?: string
+): ClassifiedError {
+  // Check if error has errorInfo property (our custom errors)
+  if (hasErrorInfo(error)) {
+    const info = error.errorInfo;
+    return {
+      errorType: info.errorType,
+      message: error.message,
+      recoverable: info.recoverable,
+      suggestion: info.suggestion,
+      toolName,
+      connectionId,
+    };
+  }
+
+  // Fallback for unknown errors (shouldn't happen, but handle gracefully)
+  return {
+    errorType: 'UNKNOWN',
+    message: error instanceof Error ? error.message : String(error),
+    recoverable: false,
+    toolName,
+    connectionId,
+  };
+}
+
+/**
+ * Log a classified error with structured context.
+ *
+ * Output format:
+ * [ISO_TIMESTAMP] [ERROR:TYPE] tool=<name> [conn=<id>] [recoverable=true/false] <message>
+ *   Suggestion: <suggestion>
+ */
+function logErrorEvent(classified: ClassifiedError): void {
+  const timestamp = new Date().toISOString();
+  const parts = [
+    `[ERROR:${classified.errorType}]`,
+    `tool=${classified.toolName}`,
+    classified.connectionId ? `conn=${classified.connectionId}` : null,
+    `recoverable=${classified.recoverable}`,
+  ].filter(Boolean);
+
+  console.error(`${timestamp} ${parts.join(' ')} ${classified.message}`);
+
+  if (classified.suggestion) {
+    console.error(`  Suggestion: ${classified.suggestion}`);
+  }
+}
+
+// Handle tool list requests
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return { tools: toolRegistry.getAllTools() };
+});
+
+/**
+ * Global error classification and handling in MCP tool routing.
+ *
+ * Error Flow:
+ * 1. Tool executes within try-catch block
+ * 2. Tool calls browserManager.*OrThrow() or throws CustomError
+ * 3. Tool catches and returns error via errorResponse()
+ * 4. If uncaught (shouldn't happen), global handler catches
+ * 5. Global handler classifies error by type
+ * 6. Error is logged to console with structured context
+ * 7. Classified error returned to MCP client
+ *
+ * Error Types and Recovery:
+ * - CONNECTION: Chrome not connected → call chrome() to connect
+ * - DEBUGGER: Debugger not enabled → call enable_debug_tools()
+ * - STATE: Execution not in required state → pause/resume/breakpoint
+ * - EXECUTION: Operation failed during execution → check parameters
+ * - UNKNOWN: Unexpected error type → report for debugging
+ *
+ * All error messages are preserved. Suggestions added based on error type.
+ * Console logs include tool name, error type, and recovery suggestion.
+ */
+// Handle tool execution via registry lookup
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args = {} } = request.params;
+
+  try {
+    // Phase 3: Registry Lookup (replaces 172 lines of switch statements)
+    const handler = toolRegistry.getHandler(name);
+    if (!handler) {
+      throw new Error(`Unknown tool: ${name}`);
+    }
+
+    return await handler.invoke(args);
+  } catch (error) {
+    // PRESERVED: Error handling exactly as original (lines 1183-1204)
+    const toolName = request.params.name;
+    const connectionId = (request.params.arguments as ToolArguments | undefined)?.connection_id;
+    const classified = classifyError(error, toolName, connectionId);
+
+    logErrorEvent(classified);
+
+    // Construct error message with suggestion
+    const errorMessage = classified.suggestion
+      ? `${classified.message}\n\nSuggestion: ${classified.suggestion}`
+      : classified.message;
+
+    // Return error with custom metadata fields for internal tracking
+    return {
+      content: [{ type: 'text' as const, text: errorMessage }],
+      isError: true,
+      // Metadata for client-side error handling (not part of MCP spec but tolerated)
+      _toolName: toolName,
+      _errorType: classified.errorType,
+      _recoverable: classified.recoverable,
+    } as ErrorToolResult;
+  }
+});
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+
+  const mode = USE_LEGACY_TOOLS ? 'LEGACY TOOLS' : 'SMART TOOLS';
+  console.error(`Cherry Chrome MCP Server running on stdio [MODE: ${mode}]`);
+  console.error(`Set USE_LEGACY_TOOLS=true to use original granular tools`);
+}
+
+main().catch((error) => {
+  console.error('Server error:', error);
+  process.exit(1);
+});
