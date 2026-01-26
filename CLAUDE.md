@@ -46,8 +46,8 @@ claude mcp add --scope project cherry-chrome -- node /absolute/path/to/build/src
 
 The server supports two tool modes via `USE_LEGACY_TOOLS` environment variable:
 
-- **Smart Mode (default):** 17 consolidated action-based tools (`chrome`, `step`, `execution`, etc.)
-- **Legacy Mode:** 23 granular tools (`chrome_connect`, `debugger_enable`, etc.)
+- **Smart Mode (default):** 18 consolidated action-based tools (`connect`, `step`, `execution`, etc.)
+- **Legacy Mode:** 24 granular tools (`chrome_connect`, `debugger_enable`, etc.)
 
 See `FEATURE-TOGGLE.md` for full details, usage examples, and tool comparison table.
 
@@ -62,10 +62,11 @@ src/
 ├── config.ts         # Configuration constants (including USE_LEGACY_TOOLS flag)
 ├── response.ts       # Response formatting, size checking utilities
 ├── types.ts          # TypeScript type definitions
+├── toolRegistry.ts   # Tool registry pattern for O(1) tool lookup
 └── tools/
     ├── index.ts      # Tool exports (legacy + consolidated)
     ├── chrome.ts     # Connection tools: legacy (5) + smart (3 consolidated)
-    ├── dom.ts        # DOM tools (5): query_elements, click, fill, navigate, console
+    ├── dom.ts        # DOM tools (6): query_elements, click, fill, navigate, console, inspect
     └── debugger.ts   # Debugger tools: legacy (11) + smart (7 consolidated)
 ```
 
@@ -86,17 +87,27 @@ src/
 - `MAX_RESULT_SIZE = 5000` - Result size limit (~1250 tokens)
 - `USE_LEGACY_TOOLS` - Feature toggle (default: `false`, smart tools enabled)
 
+**Tool Registry (`src/toolRegistry.ts`)**
+- Map-based registry for O(1) tool lookup (replaces 170-line switch statements)
+- `ToolHandler` interface: name, definition, invoke method
+- `ToolRegistry` interface: getHandler, getAllTools, size
+- Validates all tools have handlers at initialization
+
 ### Tool Categories
 
-**Legacy Mode (23 tools):**
+**Legacy Mode (24 tools):**
 - Chrome Connection (7): `chrome_connect`, `chrome_launch`, `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `list_targets`, `switch_target`
-- DOM Interaction (5): `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`
+- DOM Interaction (6): `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`, `inspect_element`
 - Debugger (11): `debugger_enable`, `debugger_set_breakpoint`, `debugger_get_call_stack`, `debugger_evaluate_on_call_frame`, `debugger_step_over`, `debugger_step_into`, `debugger_step_out`, `debugger_resume`, `debugger_pause`, `debugger_remove_breakpoint`, `debugger_set_pause_on_exceptions`
 
-**Smart Mode (17 tools):**
+**Smart Mode (18 tools):**
 - Chrome Connection (5): `connect` (smart launch/connect), `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `target` (consolidated)
-- DOM Interaction (5): Same as legacy mode
+- DOM Interaction (6): Same as legacy mode
 - Debugger (7): `enable_debug_tools`, `breakpoint` (consolidated), `step` (consolidated), `execution` (consolidated), `call_stack`, `evaluate`, `pause_on_exceptions`
+
+**Shared Tools (9 tools in both modes):**
+- DOM: `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`, `inspect_element`
+- Connection: `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`
 
 ### Smart Connect Tool
 
@@ -123,6 +134,100 @@ connect({ url: 'https://example.com', port: 9222 })
 - `extra_args` (optional): Additional Chrome flags when launching
 
 ## Implementation Patterns
+
+### Tool Registry Pattern
+
+The server uses a Map-based registry for efficient tool routing, eliminating 170+ lines of switch statement duplication.
+
+**Registry Initialization** (`src/index.ts`):
+
+```typescript
+// Phase 1: Select tool definitions based on feature toggle
+const activeTools = USE_LEGACY_TOOLS ? legacyTools : smartTools;
+
+// Phase 2: Create handlers for active tool set
+const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS);
+
+// Phase 3: Initialize registry (validates all tools have handlers)
+const toolRegistry = createToolRegistry(activeTools, toolHandlers);
+```
+
+**Handler Creation**:
+
+The `createToolHandlers()` function creates a Map of tool name → handler:
+
+```typescript
+function createToolHandlers(useLegacy: boolean): Map<string, ToolHandler> {
+  const handlers = new Map<string, ToolHandler>();
+
+  // Shared tools (9 tools in both modes)
+  handlers.set('query_elements', {
+    name: 'query_elements',
+    definition: findTool(tools, 'query_elements'),
+    invoke: async (args: unknown) =>
+      queryElements(args as Parameters<typeof queryElements>[0]),
+  });
+
+  if (useLegacy) {
+    // Legacy-specific handlers (15 tools)
+    handlers.set('chrome_connect', { /* ... */ });
+    handlers.set('debugger_enable', { /* ... */ });
+  } else {
+    // Smart-specific handlers (9 tools)
+    handlers.set('connect', { /* ... */ });
+    handlers.set('enable_debug_tools', { /* ... */ });
+  }
+
+  return handlers;
+}
+```
+
+**Tool Routing**:
+
+MCP request handlers use O(1) registry lookup:
+
+```typescript
+// List all tools
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return { tools: toolRegistry.getAllTools() };
+});
+
+// Execute tool
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  const handler = toolRegistry.getHandler(name);
+  if (!handler) {
+    throw new Error(`Unknown tool: ${name}`);
+  }
+
+  return await handler.invoke(args);
+});
+```
+
+**Type Safety**:
+
+Handlers preserve type casting from original implementation:
+
+```typescript
+handlers.set('click_element', {
+  name: 'click_element',
+  definition: findTool(tools, 'click_element'),
+  invoke: async (args: unknown) =>
+    clickElement(args as Parameters<typeof clickElement>[0]),
+});
+```
+
+**Benefits**:
+- O(1) tool lookup (Map.get vs. linear switch)
+- 150+ line reduction in `src/index.ts`
+- Single source of truth for tool → handler mapping
+- Type-safe handler invocation
+- Easy to add/remove tools without modifying routing logic
+
+**Testing**:
+- `tests/toolRegistry.test.ts` - Registry module unit tests (12 tests)
+- `tests/toolHandlers.test.ts` - Handler creation validation (13 tests)
 
 ### Query Elements with Filters
 
@@ -362,24 +467,20 @@ function checkResultSize(result: string, maxSize = 5000, context?: string) {
 
 ### Feature Toggle Implementation
 
-Tool registration and routing is conditional based on `USE_SMART_TOOLS`:
+Tool registration and routing is conditional based on `USE_LEGACY_TOOLS`:
 
 ```typescript
 // src/index.ts
-import { USE_SMART_TOOLS } from './config.js';
+import { USE_LEGACY_TOOLS } from './config.js';
 
-const legacyTools: Tool[] = [ /* 23 legacy tool definitions */ ];
+const legacyTools: Tool[] = [ /* 24 legacy tool definitions */ ];
 const smartTools: Tool[] = [ /* 18 smart tool definitions */ ];
 
-const activeTools = USE_SMART_TOOLS ? smartTools : legacyTools;
+const activeTools = USE_LEGACY_TOOLS ? smartTools : legacyTools;
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (USE_SMART_TOOLS) {
-    // Route to consolidated tools
-  } else {
-    // Route to legacy tools
-  }
-});
+// Registry replaces switch statement routing
+const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS);
+const toolRegistry = createToolRegistry(activeTools, toolHandlers);
 ```
 
 ## Reference Implementations
