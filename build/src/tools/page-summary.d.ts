@@ -39,5 +39,5 @@ export interface PageSummaryConfig {
 /**
  * Gathers a semantic page summary with actionable element information
  */
-export declare function gatherPageSummary(page: Page, config?: PageSummaryConfig, connectionId?: string): Promise<string>;
+export declare function gatherPageSummary(page: Page, config?: PageSummaryConfig): Promise<string>;
 //# sourceMappingURL=page-summary.d.ts.map

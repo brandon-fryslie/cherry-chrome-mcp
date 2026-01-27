@@ -12,21 +12,13 @@ import {
 } from '../response.js';
 import type { QueryElementsResult, DomActionResult } from '../types.js';
 import { gatherNavigateContext, gatherActionContext, gatherZeroResultSuggestions, captureDOMSnapshot } from './context.js';
-import { compressLogs, formatCompressedLogs } from './console-pattern.js';
+import {
+  extractPageState,
+  processLogs,
+  formatConsoleLogsOutput,
+  updateQueryTracking,
+} from './console-logs.js';
 
-/**
- * Format time difference as human-readable string
- */
-function formatTimeSince(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 /**
  * Find elements by CSS selector and return their details.
@@ -585,48 +577,6 @@ export async function navigate(args: {
   }
 }
 
-/**
- * Format a single log with optional stack trace expansion
- */
-function formatLogWithStack(log: {
-  level: string;
-  text: string;
-  timestamp: number;
-  url?: string;
-  lineNumber?: number;
-  stackTrace?: string;
-  stackLocations?: Array<{ url?: string; lineNumber?: number; columnNumber?: number }>;
-}, expandErrors: boolean): string[] {
-  const lines: string[] = [];
-  const timestamp = new Date(log.timestamp).toISOString().split('T')[1].slice(0, 12);
-  const location = log.url ? ` (${log.url}${log.lineNumber ? `:${log.lineNumber}` : ''})` : '';
-
-  lines.push(`[${timestamp}] [${log.level.toUpperCase()}] ${log.text}${location}`);
-
-  // Include stack trace for errors when expand_errors is true
-  if (expandErrors && log.level === 'error') {
-    if (log.stackTrace) {
-      // Full Error.stack string - indent each line
-      const stackLines = log.stackTrace.split('\n').slice(1); // Skip first line (error message, already shown)
-      for (const stackLine of stackLines) {
-        if (stackLine.trim()) {
-          lines.push(`    ${stackLine.trim()}`);
-        }
-      }
-    } else if (log.stackLocations && log.stackLocations.length > 0) {
-      // Fall back to Puppeteer stack locations
-      lines.push('    Stack trace:');
-      for (const loc of log.stackLocations) {
-        const file = loc.url?.split('/').pop() || loc.url || 'unknown';
-        const line = loc.lineNumber !== undefined ? `:${loc.lineNumber}` : '';
-        const col = loc.columnNumber !== undefined ? `:${loc.columnNumber}` : '';
-        lines.push(`      at ${file}${line}${col}`);
-      }
-    }
-  }
-
-  return lines;
-}
 
 /**
  * Get console log messages from the browser.
@@ -634,6 +584,10 @@ function formatLogWithStack(log: {
  * Console messages are captured automatically when connected.
  * Returns the most recent messages (default: 3).
  * Use expand_errors: true to include full stack traces for error messages.
+ *
+ * Architecture: This function is a thin shell that orchestrates pure functions.
+ * All data transformation and formatting is delegated to console-logs.ts.
+ * Side effects (reading connection state, updating query tracking) are isolated here.
  */
 export async function getConsoleLogs(args: {
   filter_level?: string;
@@ -641,89 +595,29 @@ export async function getConsoleLogs(args: {
   expand_errors?: boolean;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  const filterLevel = args.filter_level ?? 'all';
-  const limit = args.limit ?? 3;
-  const expandErrors = args.expand_errors ?? false;
-
   try {
-    // Verify connection exists using throwing method
+    // === Side Effect: Read connection state ===
     const connection = browserManager.getConnectionOrThrow(args.connection_id);
-
-    // Get logs from browser manager
     const logs = browserManager.getConsoleLogs(args.connection_id);
 
-    // Filter logs by level if specified
-    const filteredLogs = filterLevel === 'all' ? logs : logs.filter(log => log.level === filterLevel);
+    // === Pure: Extract page state (read-only) ===
+    const pageState = extractPageState(connection);
 
-    // Build freshness header
-    const output: string[] = [];
-    output.push('--- PAGE STATE ---');
+    // === Pure: Process logs (filter, compress, limit) ===
+    const query = {
+      filterLevel: args.filter_level ?? 'all',
+      limit: args.limit ?? 3,
+      expandErrors: args.expand_errors ?? false,
+    };
+    const processed = processLogs(logs, query);
 
-    // Freshness delta vs last query
-    if (connection.lastQueryEpoch !== null && connection.lastConsoleQuery !== null) {
-      if (connection.lastQueryEpoch < connection.navigationEpoch) {
-        output.push('[PAGE RELOADED since your last query]');
-      } else if (connection.hmrUpdateCount > 0 && connection.lastHmrTime !== null && connection.lastHmrTime > connection.lastConsoleQuery) {
-        output.push('[HMR UPDATE occurred since your last query]');
-      } else {
-        output.push('[No changes since your last query]');
-      }
-    }
+    // === Side Effect: Update query tracking for next call ===
+    updateQueryTracking(connection);
 
-    // Current page state
-    output.push(`Navigation epoch: ${connection.navigationEpoch}`);
-    output.push(`Last navigation: ${formatTimeSince(connection.lastNavigationTime)}`);
+    // === Pure: Format output ===
+    const output = formatConsoleLogsOutput(pageState, processed);
 
-    if (connection.hmrUpdateCount > 0 && connection.lastHmrTime !== null) {
-      output.push(`HMR updates since navigation: ${connection.hmrUpdateCount}`);
-      output.push(`Last HMR update: ${formatTimeSince(connection.lastHmrTime)}`);
-    }
-
-    output.push('');
-
-    // Update query tracking for next call
-    connection.lastConsoleQuery = Date.now();
-    connection.lastQueryEpoch = connection.navigationEpoch;
-
-    if (filteredLogs.length === 0) {
-      output.push(`No console messages captured${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}.`);
-      return successResponse(output.join('\n'));
-    }
-
-    output.push('--- CONSOLE MESSAGES ---');
-
-    if (expandErrors) {
-      // When expanding errors, skip compression and apply limit to raw logs
-      const recentLogs = filteredLogs.slice(-limit);
-      output.push(
-        `Showing ${recentLogs.length} of ${filteredLogs.length}${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''} (with stack traces):`
-      );
-      output.push('');
-
-      for (const log of recentLogs) {
-        const logLines = formatLogWithStack(log, true);
-        output.push(...logLines);
-      }
-    } else {
-      // Compress ALL logs first, then apply limit to compressed result
-      const compressionResult = compressLogs(filteredLogs);
-
-      // Apply limit to compressed items (from the end, most recent)
-      const totalCompressedItems = compressionResult.compressed.length;
-      const limitedItems = compressionResult.compressed.slice(-limit);
-
-      // Recalculate stats for limited output
-      const limitedResult = {
-        ...compressionResult,
-        compressed: limitedItems,
-      };
-      const formattedLogs = formatCompressedLogs(limitedResult);
-
-
-      output.push(...formattedLogs);
-    }
-
-    return successResponse(output.join('\n'));
+    return successResponse(output);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
   }

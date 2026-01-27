@@ -80,6 +80,10 @@ export declare function navigate(args: {
  * Console messages are captured automatically when connected.
  * Returns the most recent messages (default: 3).
  * Use expand_errors: true to include full stack traces for error messages.
+ *
+ * Architecture: This function is a thin shell that orchestrates pure functions.
+ * All data transformation and formatting is delegated to console-logs.ts.
+ * Side effects (reading connection state, updating query tracking) are isolated here.
  */
 export declare function getConsoleLogs(args: {
     filter_level?: string;

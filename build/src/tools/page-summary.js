@@ -1,7 +1,6 @@
 /**
  * Page Summary Composer - Orchestrates extractors into actionable output
  */
-import { browserManager } from '../browser.js';
 import { extractFocused, extractButtons, extractLinks, extractInputs, extractForms, extractToggles, extractAlerts, extractModals, extractErrors, extractLandmarks, extractTabs, extractHeadings, } from './page-extractors.js';
 /**
  * Default configuration values
@@ -38,28 +37,13 @@ const DEFAULT_CONFIG = {
 /**
  * Gathers a semantic page summary with actionable element information
  */
-export async function gatherPageSummary(page, config, connectionId) {
+export async function gatherPageSummary(page, config) {
     // Merge config with defaults
     const cfg = {
         include: { ...DEFAULT_CONFIG.include, ...config?.include },
         limits: { ...DEFAULT_CONFIG.limits, ...config?.limits },
     };
     const sections = [];
-    // Console logs (errors and warnings, top 5)
-    const connection = browserManager.getConnection(connectionId);
-    if (connection) {
-        const errorWarningLogs = connection.consoleLogs
-            .filter(log => log.level === 'error' || log.level === 'warn')
-            .slice(-5);
-        if (errorWarningLogs.length > 0) {
-            const lines = [];
-            errorWarningLogs.forEach((log) => {
-                const text = log.text.length > 200 ? log.text.substring(0, 197) + '...' : log.text;
-                lines.push(`[${log.level.toUpperCase()}] ${text}`);
-            });
-            sections.push(lines.join('\n'));
-        }
-    }
     // Focused element
     if (cfg.include.focused) {
         const focused = await extractFocused(page);

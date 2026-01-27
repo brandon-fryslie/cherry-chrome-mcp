@@ -7,6 +7,7 @@
 import { browserManager } from '../browser.js';
 import { escapeForJs } from '../response.js';
 import { gatherPageSummary } from './page-summary.js';
+import { compressLogs, formatCompressedLogs } from './console-pattern.js';
 /**
  * Truncate long values to prevent overwhelming context
  */
@@ -439,23 +440,18 @@ export async function gatherNavigateContext(page, connectionId) {
         const title = await page.title();
         lines.push(`Title: ${title}`);
         lines.push('');
-        // Console errors (up to 10 most recent)
-        const connection = browserManager.getConnection(connectionId);
-        if (connection) {
-            const errorLogs = connection.consoleLogs
-                .filter(log => log.level === 'error')
-                .slice(-10);
-            if (errorLogs.length > 0) {
-                lines.push('Console Errors:');
-                for (const log of errorLogs) {
-                    const text = log.text.length > 200 ? log.text.substring(0, 197) + '...' : log.text;
-                    lines.push(`  [ERROR] ${text}`);
-                }
-                lines.push('');
-            }
+        // Console errors and warnings (top 5)
+        const logs = browserManager.getConsoleLogs(connectionId)
+            .filter(log => log.level === 'error' || log.level === 'warn');
+        if (logs.length > 0) {
+            const compressed = compressLogs(logs);
+            compressed.compressed = compressed.compressed.slice(-5);
+            const formatted = formatCompressedLogs(compressed);
+            lines.push(...formatted);
+            lines.push('');
         }
         // Semantic page summary using new extractors
-        const summary = await gatherPageSummary(page, undefined, connectionId);
+        const summary = await gatherPageSummary(page);
         lines.push(summary);
     }
     catch (err) {
