@@ -519,7 +519,7 @@ export async function gatherNavigateContext(page: Page, connectionId?: string): 
     }
 
     // Semantic page summary using new extractors
-    const summary = await gatherPageSummary(page);
+    const summary = await gatherPageSummary(page, undefined, connectionId);
     lines.push(summary);
 
   } catch (err) {

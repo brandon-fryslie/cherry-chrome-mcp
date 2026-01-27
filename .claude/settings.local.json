@@ -1,0 +1,6 @@
+{
+  "enabledMcpjsonServers": [
+    "chromedevtools/chrome-devtools-mcp"
+  ],
+  "disabledMcpjsonServers": []
+}
