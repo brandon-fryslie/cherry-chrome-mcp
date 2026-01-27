@@ -9,6 +9,7 @@ import type { Page } from 'puppeteer';
 import { browserManager } from '../browser.js';
 import type { PageInventory, SelectorSuggestion, DOMSnapshot, DOMDiff, ElementSnapshot } from '../types.js';
 import { escapeForJs } from '../response.js';
+import { gatherPageSummary } from './page-summary.js';
 
 /**
  * Truncate long values to prevent overwhelming context
@@ -489,7 +490,7 @@ export async function gatherStepContext(
  * Returns formatted context including:
  * - Page title
  * - Console errors (if any, up to 10 most recent)
- * - Element summary (buttons, inputs, links)
+ * - Semantic page summary (extracted using page-summary.ts)
  */
 export async function gatherNavigateContext(page: Page, connectionId?: string): Promise<string> {
   const lines: string[] = [''];
@@ -517,28 +518,9 @@ export async function gatherNavigateContext(page: Page, connectionId?: string): 
       }
     }
 
-    // Extract element counts using page.evaluate (runs in browser)
-    // Use string-based evaluation to avoid TypeScript DOM type issues
-    const pageData = await page.evaluate(`(() => {
-      return {
-        buttonCount: document.querySelectorAll('button').length,
-        inputCount: document.querySelectorAll('input, textarea').length,
-        linkCount: document.querySelectorAll('a').length,
-        formCount: document.querySelectorAll('form').length,
-      };
-    })()`) as {
-      buttonCount: number;
-      inputCount: number;
-      linkCount: number;
-      formCount: number;
-    };
-
-    // Page summary
-    lines.push('Page Summary:');
-    lines.push(`  ${pageData.buttonCount} buttons`);
-    lines.push(`  ${pageData.inputCount} inputs`);
-    lines.push(`  ${pageData.linkCount} links`);
-    lines.push(`  ${pageData.formCount} forms`);
+    // Semantic page summary using new extractors
+    const summary = await gatherPageSummary(page);
+    lines.push(summary);
 
   } catch (err) {
     // If context gathering fails, just skip it

@@ -64,10 +64,13 @@ src/
 ├── types.ts          # TypeScript type definitions
 ├── toolRegistry.ts   # Tool registry pattern for O(1) tool lookup
 └── tools/
-    ├── index.ts      # Tool exports (legacy + consolidated)
-    ├── chrome.ts     # Connection tools: legacy (5) + smart (3 consolidated)
-    ├── dom.ts        # DOM tools (6): query_elements, click, fill, navigate, console, inspect
-    └── debugger.ts   # Debugger tools: legacy (11) + smart (7 consolidated)
+    ├── index.ts            # Tool exports (legacy + consolidated)
+    ├── chrome.ts           # Connection tools: legacy (5) + smart (3 consolidated)
+    ├── dom.ts              # DOM tools (6): query_elements, click, fill, navigate, console, inspect
+    ├── debugger.ts         # Debugger tools: legacy (11) + smart (7 consolidated)
+    ├── context.ts          # Context gathering for smart responses (navigate, action, step, pause)
+    ├── page-extractors.ts  # Composable semantic extractors (buttons, inputs, forms, landmarks, etc.)
+    └── page-summary.ts     # Page summary orchestration with configurable output
 ```
 
 ### Key Components
@@ -354,6 +357,127 @@ Each element returned by `query_elements` includes:
 - Interactive detection walks all descendants (not just direct children)
 - HTML extraction uses `cloneNode(false)` to get opening tag only
 - All three new fields are generated in browser context for efficiency
+
+### Semantic Page Summary
+
+The `navigate` tool now provides an actionable semantic page summary instead of raw element counts. The summary is generated using composable extractors that identify interactive elements, landmarks, and UI state.
+
+**Architecture:**
+
+The page summary system consists of two layers:
+
+1. **Page Extractors** (`src/tools/page-extractors.ts`): Composable, framework-agnostic extraction functions
+   - Each extractor runs a single `page.evaluate()` call for efficiency
+   - Returns typed results with configurable limits
+   - Uses only HTML semantics and ARIA roles (no framework detection)
+
+2. **Page Summary Composer** (`src/tools/page-summary.ts`): Orchestrates extractors into formatted output
+   - Configurable which extractors to run
+   - Per-category limits
+   - Human-readable formatting
+
+**Available Extractors:**
+
+| Extractor | Detects | Default Limit |
+|-----------|---------|---------------|
+| `extractFocused` | Currently focused element | N/A (1 item) |
+| `extractButtons` | `button`, `[role="button"]` | 10 |
+| `extractLinks` | `a[href]` | 10 |
+| `extractInputs` | `input`, `textarea`, `select` | 10 |
+| `extractForms` | `form` with child input summary | 5 |
+| `extractToggles` | `input[type="checkbox"]`, `[role="switch"]` | 10 |
+| `extractAlerts` | `[role="alert"]`, `[role="status"]` | 5 |
+| `extractModals` | `[role="dialog"]`, `[aria-modal="true"]` | 3 |
+| `extractErrors` | `[aria-invalid="true"]`, `[aria-errormessage]` | 10 |
+| `extractLandmarks` | `header`, `nav`, `main`, `aside`, `footer`, ARIA roles | 10 |
+| `extractTabs` | `[role="tablist"]` > `[role="tab"]` | 5 |
+| `extractHeadings` | `h1`-`h6` | 10 (opt-in) |
+
+**Example Output:**
+
+```
+Title: Dashboard
+
+── Focused ──
+input#search-blocks (text)
+
+── Buttons (7) ──
+<button>New</button>
+<button>Open</button>
+<button>Save</button>
++4 more...
+
+── Inputs (3) ──
+#project-name (text): "Shape Kaleidoscope" [placeholder: "Project name"]
+#search-blocks (text): ""
+#default-patch (number): 5
+
+── Toggles (2) ──
+[x] Enable Debug Mode
+[ ] Show Minimap
+
+── Landmarks ──
+header, nav (Library), main, aside (Inspector), aside (Settings)
+
+── Tabs ──
+[Console] [Logs] [Continuity] [*Compilation*]
+
+── Alerts ──
+None
+
+── Modals ──
+None
+
+── Errors ──
+None
+```
+
+**Configuration:**
+
+```typescript
+import { gatherPageSummary } from './tools/page-summary.js';
+
+// Default: All extractors except headings
+const summary = await gatherPageSummary(page);
+
+// Custom: Only specific extractors
+const summary = await gatherPageSummary(page, {
+  include: {
+    buttons: true,
+    inputs: true,
+    forms: true,
+    landmarks: true,
+    // All others: false
+  },
+  limits: {
+    buttons: 5,    // Show max 5 buttons
+    inputs: 20,    // Show max 20 inputs
+  },
+});
+```
+
+**Extractor Reuse:**
+
+The extractors are designed to be composable and reusable:
+
+```typescript
+// Use extractors directly in other tools
+import { extractButtons, extractInputs } from './tools/page-extractors.js';
+
+const buttons = await extractButtons(page, { limit: 5 });
+const inputs = await extractInputs(page, { includeHidden: true });
+
+// Check result metadata
+if (buttons.truncated) {
+  console.log(`Found ${buttons.total} buttons, showing ${buttons.items.length}`);
+}
+```
+
+**Integration:**
+
+- `gatherNavigateContext()` in `context.ts` now uses `gatherPageSummary()` instead of raw counts
+- All extractors use the same helper functions (`generateSelector`, `isElementVisible`)
+- Results include selector strings for immediate tool use (e.g., `click_element`, `fill_element`)
 
 ### Console Log Pattern Compression
 

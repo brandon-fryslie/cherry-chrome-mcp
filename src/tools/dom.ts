@@ -719,17 +719,6 @@ export async function getConsoleLogs(args: {
       };
       const formattedLogs = formatCompressedLogs(limitedResult);
 
-      // Show stats
-      const showing = limitedItems.length;
-      output.push(
-        `Showing ${showing} of ${totalCompressedItems} compressed entries (${filteredLogs.length} raw messages)${filterLevel !== 'all' ? ` (filter: ${filterLevel})` : ''}:`
-      );
-
-      // Show compression stats if meaningful compression occurred
-      if (compressionResult.compressionRatio > 0.2) {
-        output.push(`[Pattern compression: ${filteredLogs.length} → ${totalCompressedItems} entries (${Math.round(compressionResult.compressionRatio * 100)}% reduction)]`);
-      }
-      output.push('');
 
       output.push(...formattedLogs);
     }

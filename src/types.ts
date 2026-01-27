@@ -392,3 +392,189 @@ export interface InspectElementArgs {
   /** Chrome connection to use */
   connection_id?: string;
 }
+
+// ============================================================================
+// Page Extractor Types
+// ============================================================================
+
+/**
+ * Configuration options for extractors
+ */
+export interface ExtractorConfig {
+  /** Maximum items to return */
+  limit?: number;
+  /** Include hidden elements (display:none, visibility:hidden, zero size) */
+  includeHidden?: boolean;
+}
+
+/**
+ * Result wrapper for extractor functions
+ */
+export interface ExtractorResult<T> {
+  /** Extracted items (after limits applied) */
+  items: T[];
+  /** Total found before limiting */
+  total: number;
+  /** Whether limit was applied */
+  truncated: boolean;
+}
+
+/**
+ * Focused element information
+ */
+export interface FocusedElement {
+  /** Element tag name */
+  tag: string;
+  /** Element ID if present */
+  id?: string;
+  /** Element name attribute if present */
+  name?: string;
+  /** Input type if applicable */
+  type?: string;
+  /** CSS selector to target element */
+  selector: string;
+}
+
+/**
+ * Button information
+ */
+export interface ButtonInfo {
+  /** Full opening tag HTML */
+  html: string;
+  /** Button text content */
+  text: string;
+  /** Whether button has onclick or event listeners */
+  hasHandler: boolean;
+  /** Whether button is disabled */
+  disabled: boolean;
+  /** CSS selector to target button */
+  selector: string;
+}
+
+/**
+ * Link information
+ */
+export interface LinkInfo {
+  /** Link text content */
+  text: string;
+  /** Link href attribute */
+  href: string;
+  /** CSS selector to target link */
+  selector: string;
+}
+
+/**
+ * Input field information
+ */
+export interface InputInfo {
+  /** Input type (text, email, password, etc.) */
+  type: string;
+  /** Input name attribute if present */
+  name?: string;
+  /** Input ID if present */
+  id?: string;
+  /** Current value */
+  value?: string;
+  /** Placeholder text if present */
+  placeholder?: string;
+  /** CSS selector to target input */
+  selector: string;
+}
+
+/**
+ * Form information
+ */
+export interface FormInfo {
+  /** Form action attribute if present */
+  action?: string;
+  /** Form method attribute if present */
+  method?: string;
+  /** Number of inputs in form */
+  inputCount: number;
+  /** CSS selector to target form */
+  selector: string;
+  /** Child inputs (limited) */
+  inputs: InputInfo[];
+}
+
+/**
+ * Toggle/checkbox/switch information
+ */
+export interface ToggleInfo {
+  /** Label text if present */
+  label?: string;
+  /** Whether toggle is checked */
+  checked: boolean;
+  /** CSS selector to target toggle */
+  selector: string;
+}
+
+/**
+ * Alert/status message information
+ */
+export interface AlertInfo {
+  /** ARIA role (alert or status) */
+  role: string;
+  /** Alert text content */
+  text: string;
+  /** CSS selector to target alert */
+  selector: string;
+}
+
+/**
+ * Modal/dialog information
+ */
+export interface ModalInfo {
+  /** Whether modal is currently open */
+  open: boolean;
+  /** Modal title/label if present */
+  title?: string;
+  /** CSS selector to target modal */
+  selector: string;
+}
+
+/**
+ * Form validation error information
+ */
+export interface ErrorInfo {
+  /** Element with error state */
+  element: string;
+  /** Error message content if present */
+  message?: string;
+  /** CSS selector to target errored element */
+  selector: string;
+}
+
+/**
+ * Landmark/region information
+ */
+export interface LandmarkInfo {
+  /** Landmark type (header, nav, main, etc.) */
+  type: string;
+  /** ARIA label if present */
+  label?: string;
+  /** CSS selector to target landmark */
+  selector: string;
+}
+
+/**
+ * Tab group information
+ */
+export interface TabGroupInfo {
+  /** Tabs in group with labels and selection state */
+  tabs: Array<{ label: string; selected: boolean }>;
+  /** CSS selector to target tab group */
+  selector: string;
+}
+
+/**
+ * Heading information
+ */
+export interface HeadingInfo {
+  /** Heading level (1-6) */
+  level: number;
+  /** Heading text content */
+  text: string;
+  /** CSS selector to target heading */
+  selector: string;
+}
