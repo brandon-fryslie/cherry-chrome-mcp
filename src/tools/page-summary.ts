@@ -3,7 +3,6 @@
  */
 
 import type { Page } from 'puppeteer';
-import { browserManager } from '../browser.js';
 import {
   extractFocused,
   extractButtons,
@@ -92,8 +91,7 @@ const DEFAULT_CONFIG: Required<PageSummaryConfig> = {
  */
 export async function gatherPageSummary(
   page: Page,
-  config?: PageSummaryConfig,
-  connectionId?: string
+  config?: PageSummaryConfig
 ): Promise<string> {
   // Merge config with defaults
   const cfg: Required<PageSummaryConfig> = {
@@ -102,23 +100,6 @@ export async function gatherPageSummary(
   };
 
   const sections: string[] = [];
-
-  // Console logs (errors and warnings, top 5)
-  const connection = browserManager.getConnection(connectionId);
-  if (connection) {
-    const errorWarningLogs = connection.consoleLogs
-      .filter(log => log.level === 'error' || log.level === 'warn')
-      .slice(-5);
-
-    if (errorWarningLogs.length > 0) {
-      const lines: string[] = [];
-      errorWarningLogs.forEach((log) => {
-        const text = log.text.length > 200 ? log.text.substring(0, 197) + '...' : log.text;
-        lines.push(`[${log.level.toUpperCase()}] ${text}`);
-      });
-      sections.push(lines.join('\n'));
-    }
-  }
 
   // Focused element
   if (cfg.include.focused) {
