@@ -698,6 +698,101 @@ const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS);
 const toolRegistry = createToolRegistry(activeTools, toolHandlers);
 ```
 
+### Parameter Naming Convention
+
+All tool parameters follow a consistent naming convention to maintain clarity between the external MCP API and internal TypeScript implementation.
+
+**External API (MCP Parameters):** Use **snake_case** for all tool parameter names. This aligns with MCP SDK standards and provides a uniform interface:
+
+```typescript
+export async function queryElements(args: {
+  selector: string;
+  limit?: number;
+  text_contains?: string;      // snake_case
+  include_hidden?: boolean;     // snake_case
+  connection_id?: string;       // snake_case
+}): Promise<ToolResult>
+```
+
+Common parameter patterns:
+- `connection_id` - Chrome connection identifier
+- `text_contains` - Text filter for element search
+- `include_hidden` - Include hidden elements flag
+- `line_number` - Line number for breakpoints (1-indexed)
+- `column_number` - Column number in text
+- `call_frame_id` - CDP call frame identifier
+- `include_context` - Include surrounding element state
+
+**Internal TypeScript:** Convert to **camelCase** when working with parameters inside function implementations:
+
+```typescript
+const page = browserManager.getPageOrThrow(args.connection_id);
+const textContainsFilter = args.text_contains;  // Convert to camelCase
+const includeHidden = args.include_hidden ?? false;
+```
+
+**CDP Parameter Conversion:** Chrome DevTools Protocol expects **camelCase** parameters. Always convert when calling CDP methods:
+
+```typescript
+// MCP parameter (snake_case)
+const args = {
+  line_number: 42,
+  column_number: 10,
+};
+
+// CDP call (camelCase)
+await cdpSession.send('Debugger.setBreakpointByUrl', {
+  lineNumber: args.line_number - 1,      // Converted + adjusted
+  columnNumber: args.column_number ?? 0, // Converted
+});
+```
+
+**Contributing: Adding New Tool Parameters**
+
+When adding new tools or parameters, follow these guidelines:
+
+1. **Use snake_case for all MCP parameter names**
+   - Good: `data_testid`, `aria_label`, `include_context`, `option_text`
+   - Bad: `dataTestId`, `ariaLabel`, `includeContext`, `optionText`
+
+2. **Convert to camelCase for internal variables**
+   - External: `some_param_name`
+   - Internal: `const someParamValue = args.some_param_name;`
+
+3. **Match existing parameter names for consistency**
+   - Use `connection_id` (not `conn_id`, `connection`, etc.)
+   - Use `include_hidden` (not `show_hidden`, `hidden`, etc.)
+   - Use `text_contains` (not `search_text`, `text_filter`, etc.)
+
+4. **Document parameter purpose in schema**
+   - Add clear `description` field
+   - Specify default values
+   - Note any validation rules
+
+**Examples from Real Tools:**
+
+From `queryElements`:
+```typescript
+// Parameter names (snake_case) → internal variables (camelCase)
+selector: string;           // Used directly
+limit?: number;             // const limit = args.limit ?? 5;
+text_contains?: string;     // const textFilter = args.text_contains;
+include_hidden?: boolean;   // const includeHidden = args.include_hidden ?? false;
+connection_id?: string;     // const page = browserManager.getPageOrThrow(args.connection_id);
+```
+
+From `interact` (unified DOM interaction tool):
+```typescript
+// Parameter names describe both action type and required inputs
+action: 'click' | 'scroll' | 'right-click' | 'double-click' | 'focus' | 'blur' | 'press-key' | 'select-option';
+selector?: string;          // Optional for some actions (e.g., press-key with focused element)
+include_context?: boolean;  // Boolean flag follows include_* pattern
+option_text?: string;       // Snake_case for select-option action
+option_index?: number;      // Numeric variant of option_*
+option_value?: string;      // String variant of option_*
+connection_id?: string;     // Standard connection identifier
+```
+
 ## Reference Implementations
 
 ### `references/reference-chrome-devtools-mcp/`

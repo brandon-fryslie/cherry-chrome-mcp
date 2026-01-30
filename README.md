@@ -299,6 +299,10 @@ Configuration constants in `src/config.ts`:
 - `MAX_RESULT_SIZE = 5000` - Maximum result size in characters (~1250 tokens)
 - `USE_SMART_TOOLS = process.env.USE_SMART_TOOLS === 'true'` - Enable smart tools mode
 
+## Parameter Naming
+
+Tool parameters follow MCP SDK snake_case convention (e.g., `connection_id`, `text_contains`, `include_hidden`). This maintains consistency with the MCP specification while internal TypeScript code converts to camelCase. See **CLAUDE.md** for complete naming convention details and examples.
+
 ## Documentation
 
 - **FEATURE-TOGGLE.md** - Detailed comparison of legacy vs smart tools modes
