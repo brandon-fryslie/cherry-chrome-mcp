@@ -32,6 +32,8 @@ import {
   navigate,
   getConsoleLogs,
   inspectElement,
+  scroll,
+  getPageText,
   debuggerEnable,
   debuggerSetBreakpoint,
   debuggerGetCallStack,
@@ -120,6 +122,8 @@ export function createToolHandlers(
   addHandler(handlers, 'navigate', tools, navigate);
   addHandler(handlers, 'get_console_logs', tools, getConsoleLogs);
   addHandler(handlers, 'inspect_element', tools, inspectElement);
+  addHandler(handlers, 'scroll', tools, scroll);
+  addHandler(handlers, 'get_page_text', tools, getPageText);
 
   /**
    * Shared connection tools (3 tools)

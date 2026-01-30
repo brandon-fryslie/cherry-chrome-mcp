@@ -539,4 +539,156 @@ export async function getConsoleLogs(args) {
         return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
+/**
+ * Scroll the page in a specified direction or to an element.
+ *
+ * Use this to navigate to different parts of the page before querying elements.
+ * Particularly useful for reading content at the bottom of long pages.
+ */
+export async function scroll(args) {
+    const direction = args.direction ?? 'down';
+    const pixels = args.pixels ?? 500;
+    try {
+        const page = browserManager.getPageOrThrow(args.connection_id);
+        let script;
+        let description;
+        if (args.selector) {
+            // Scroll to element
+            const escapedSelector = escapeForJs(args.selector);
+            script = `
+        (() => {
+          const el = document.querySelector('${escapedSelector}');
+          if (!el) {
+            return { success: false, error: 'Element not found: ${escapedSelector}' };
+          }
+          el.scrollIntoView({ behavior: 'instant', block: 'center' });
+          return {
+            success: true,
+            scrollY: window.scrollY,
+            scrollHeight: document.documentElement.scrollHeight,
+            viewportHeight: window.innerHeight
+          };
+        })()
+      `;
+            description = `Scrolled to element: ${args.selector}`;
+        }
+        else {
+            // Scroll by direction
+            let scrollCode;
+            switch (direction) {
+                case 'top':
+                    scrollCode = 'window.scrollTo(0, 0)';
+                    description = 'Scrolled to top of page';
+                    break;
+                case 'bottom':
+                    scrollCode = 'window.scrollTo(0, document.documentElement.scrollHeight)';
+                    description = 'Scrolled to bottom of page';
+                    break;
+                case 'up':
+                    scrollCode = `window.scrollBy(0, -${pixels})`;
+                    description = `Scrolled up ${pixels}px`;
+                    break;
+                case 'down':
+                default:
+                    scrollCode = `window.scrollBy(0, ${pixels})`;
+                    description = `Scrolled down ${pixels}px`;
+                    break;
+            }
+            script = `
+        (() => {
+          ${scrollCode};
+          return {
+            success: true,
+            scrollY: window.scrollY,
+            scrollHeight: document.documentElement.scrollHeight,
+            viewportHeight: window.innerHeight
+          };
+        })()
+      `;
+        }
+        const result = await page.evaluate(script);
+        if (!result.success) {
+            return errorResponse(result.error || 'Scroll failed');
+        }
+        const scrollMax = (result.scrollHeight ?? 0) - (result.viewportHeight ?? 0);
+        const percent = scrollMax > 0 ? Math.round(((result.scrollY ?? 0) / scrollMax) * 100) : 0;
+        const position = `Position: ${result.scrollY ?? 0}/${scrollMax} (${percent}%)`;
+        return successResponse(`${description}\n${position}`);
+    }
+    catch (error) {
+        return errorResponse(error instanceof Error ? error.message : String(error));
+    }
+}
+/**
+ * Get text content from elements matching a selector.
+ *
+ * Returns just the text content without HTML structure or metadata.
+ * Useful for reading conversation messages, article content, etc.
+ * Use from_end=true to get the last N matches (e.g., recent messages).
+ */
+export async function getPageText(args) {
+    const selector = args.selector ?? 'body';
+    const limit = Math.min(args.limit ?? 10, 50); // Cap at 50
+    const fromEnd = args.from_end ?? false;
+    const maxLength = args.max_length ?? 1000; // Per-element max
+    try {
+        const page = browserManager.getPageOrThrow(args.connection_id);
+        const escapedSelector = escapeForJs(selector);
+        const script = `
+      (() => {
+        let elements = Array.from(document.querySelectorAll('${escapedSelector}'));
+        const total = elements.length;
+
+        if (total === 0) {
+          return { found: 0, texts: [] };
+        }
+
+        // Take from end if requested
+        if (${fromEnd}) {
+          elements = elements.slice(-${limit});
+        } else {
+          elements = elements.slice(0, ${limit});
+        }
+
+        const texts = elements.map((el, idx) => {
+          const text = el.innerText || el.textContent || '';
+          const trimmed = text.trim();
+          const truncated = trimmed.length > ${maxLength}
+            ? trimmed.substring(0, ${maxLength}) + '... [truncated]'
+            : trimmed;
+
+          // Get a simple identifier for context
+          const id = el.id ? '#' + el.id : '';
+          const dataRole = el.getAttribute('data-message-author-role') || '';
+          const identifier = dataRole || id || el.tagName.toLowerCase();
+
+          return {
+            index: ${fromEnd} ? total - elements.length + idx : idx,
+            identifier: identifier,
+            text: truncated
+          };
+        });
+
+        return { found: total, showing: elements.length, fromEnd: ${fromEnd}, texts: texts };
+      })()
+    `;
+        const result = await page.evaluate(script);
+        if (result.found === 0) {
+            return successResponse(`No elements found matching: ${selector}`);
+        }
+        const output = [];
+        const position = result.fromEnd ? 'last' : 'first';
+        output.push(`Found ${result.found} element(s), showing ${position} ${result.showing}:`);
+        output.push('');
+        for (const item of result.texts) {
+            output.push(`--- [${item.index}] ${item.identifier} ---`);
+            output.push(item.text);
+            output.push('');
+        }
+        return successResponse(output.join('\n'));
+    }
+    catch (error) {
+        return errorResponse(error instanceof Error ? error.message : String(error));
+    }
+}
 //# sourceMappingURL=dom.js.map

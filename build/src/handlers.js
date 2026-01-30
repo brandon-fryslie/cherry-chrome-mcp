@@ -10,7 +10,7 @@
  * - Handles both legacy (24 tools) and smart (18 tools) modes
  */
 // Import all tool functions
-import { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnection, chromeDisconnect, listTargets, switchTarget, connect, target, enableDebugTools, queryElements, clickElement, fillElement, navigate, getConsoleLogs, inspectElement, debuggerEnable, debuggerSetBreakpoint, debuggerGetCallStack, debuggerEvaluateOnCallFrame, debuggerStepOver, debuggerStepInto, debuggerStepOut, debuggerResume, debuggerPause, debuggerRemoveBreakpoint, debuggerSetPauseOnExceptions, step, execution, breakpoint, callStack, evaluate, pauseOnExceptions, } from './tools/index.js';
+import { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnection, chromeDisconnect, listTargets, switchTarget, connect, target, enableDebugTools, queryElements, clickElement, fillElement, navigate, getConsoleLogs, inspectElement, scroll, getPageText, debuggerEnable, debuggerSetBreakpoint, debuggerGetCallStack, debuggerEvaluateOnCallFrame, debuggerStepOver, debuggerStepInto, debuggerStepOut, debuggerResume, debuggerPause, debuggerRemoveBreakpoint, debuggerSetPauseOnExceptions, step, execution, breakpoint, callStack, evaluate, pauseOnExceptions, } from './tools/index.js';
 /**
  * Find tool definition by name.
  * @throws Error if tool not found
@@ -68,6 +68,8 @@ export function createToolHandlers(useLegacy, legacyTools, smartTools) {
     addHandler(handlers, 'navigate', tools, navigate);
     addHandler(handlers, 'get_console_logs', tools, getConsoleLogs);
     addHandler(handlers, 'inspect_element', tools, inspectElement);
+    addHandler(handlers, 'scroll', tools, scroll);
+    addHandler(handlers, 'get_page_text', tools, getPageText);
     /**
      * Shared connection tools (3 tools)
      *

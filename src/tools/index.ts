@@ -28,6 +28,8 @@ export {
   fillElement,
   navigate,
   getConsoleLogs,
+  scroll,
+  getPageText,
 } from './dom.js';
 
 // Console logs pure functions (for testing and reuse)

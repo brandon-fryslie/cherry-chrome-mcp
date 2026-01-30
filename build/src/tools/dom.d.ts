@@ -97,4 +97,42 @@ export declare function getConsoleLogs(args: {
     }>;
     isError?: boolean;
 }>;
+/**
+ * Scroll the page in a specified direction or to an element.
+ *
+ * Use this to navigate to different parts of the page before querying elements.
+ * Particularly useful for reading content at the bottom of long pages.
+ */
+export declare function scroll(args: {
+    direction?: 'top' | 'bottom' | 'up' | 'down';
+    selector?: string;
+    pixels?: number;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
+/**
+ * Get text content from elements matching a selector.
+ *
+ * Returns just the text content without HTML structure or metadata.
+ * Useful for reading conversation messages, article content, etc.
+ * Use from_end=true to get the last N matches (e.g., recent messages).
+ */
+export declare function getPageText(args: {
+    selector?: string;
+    limit?: number;
+    from_end?: boolean;
+    max_length?: number;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
 //# sourceMappingURL=dom.d.ts.map

@@ -3,7 +3,7 @@
  */
 export { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnection, chromeDisconnect, listTargets, switchTarget, } from './chrome.js';
 export { chrome, connect, target, enableDebugTools, } from './chrome.js';
-export { queryElements, clickElement, fillElement, navigate, getConsoleLogs, } from './dom.js';
+export { queryElements, clickElement, fillElement, navigate, getConsoleLogs, scroll, getPageText, } from './dom.js';
 export { filterLogsByLevel, limitLogs, determineChangeStatus, extractPageState, processLogs, formatTimeSince, formatPageStateHeader, formatLogWithStack, formatProcessedLogs, formatConsoleLogsOutput, updateQueryTracking, } from './console-logs.js';
 export type { PageState, ProcessedLogs, ConsoleLogsQuery, } from './console-logs.js';
 export { inspectElement, } from './inspect.js';

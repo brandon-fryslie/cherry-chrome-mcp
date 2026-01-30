@@ -261,6 +261,65 @@ const toolMetadata = {
         },
       },
     },
+    scroll: {
+      description:
+        'Scroll the page. Use direction for relative scrolling, or selector to scroll to a specific element. Essential for reading content at the bottom of long pages.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          direction: {
+            type: 'string',
+            description: 'Scroll direction: "top", "bottom", "up", "down"',
+            enum: ['top', 'bottom', 'up', 'down'],
+          },
+          selector: {
+            type: 'string',
+            description: 'CSS selector of element to scroll into view (overrides direction)',
+          },
+          pixels: {
+            type: 'number',
+            description: 'Pixels to scroll for up/down (default: 500)',
+            default: 500,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+      },
+    },
+    getPageText: {
+      description:
+        'Get text content from elements matching a selector. Returns just text without HTML structure. Use from_end=true to get the last N matches (useful for recent messages in conversations).',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'CSS selector for elements to extract text from (default: body)',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of elements to return (default: 10, max: 50)',
+            default: 10,
+          },
+          from_end: {
+            type: 'boolean',
+            description: 'Get last N matches instead of first N (default: false)',
+            default: false,
+          },
+          max_length: {
+            type: 'number',
+            description: 'Maximum text length per element (default: 1000)',
+            default: 1000,
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Chrome connection to use',
+          },
+        },
+      },
+    },
   },
   connection: {
     chromeListConnections: {
@@ -417,6 +476,8 @@ const legacyTools: Tool[] = [
   { name: 'navigate', ...toolMetadata.dom.navigate },
   { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
   { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
+  { name: 'scroll', ...toolMetadata.dom.scroll },
+  { name: 'get_page_text', ...toolMetadata.dom.getPageText },
   // Debugger Tools
   {
     name: 'debugger_enable',
@@ -695,6 +756,8 @@ const smartTools: Tool[] = [
   { name: 'navigate', ...toolMetadata.dom.navigate },
   { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
   { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
+  { name: 'scroll', ...toolMetadata.dom.scroll },
+  { name: 'get_page_text', ...toolMetadata.dom.getPageText },
   // Debugger Tools (consolidated)
   {
     name: 'enable_debug_tools',
