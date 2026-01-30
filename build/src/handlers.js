@@ -23,6 +23,51 @@ function findTool(tools, name) {
     return tool;
 }
 /**
+ * Dispatcher for unified 'interact' tool.
+ * Routes click and scroll actions to their respective implementations.
+ */
+async function interact(args) {
+    const arg = args;
+    switch (arg.action) {
+        case 'click':
+            if (!arg.selector) {
+                return {
+                    content: [{ type: 'text', text: 'Error: click action requires "selector" parameter' }],
+                    isError: true,
+                };
+            }
+            return clickElement({
+                selector: arg.selector,
+                index: arg.index,
+                include_context: arg.include_context,
+                connection_id: arg.connection_id,
+            });
+        case 'scroll':
+            if (!arg.direction && !arg.selector) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Error: scroll action requires either "direction" or "selector" parameter',
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+            return scroll({
+                direction: arg.direction,
+                pixels: arg.pixels,
+                selector: arg.selector,
+                connection_id: arg.connection_id,
+            });
+        default:
+            return {
+                content: [{ type: 'text', text: `Error: unknown interact action: ${arg.action}` }],
+                isError: true,
+            };
+    }
+}
+/**
  * Register a tool handler with automatic name deduplication.
  * Reduces triple-name pattern to single name usage.
  *
@@ -54,21 +99,19 @@ export function createToolHandlers(useLegacy, legacyTools, smartTools) {
     const handlers = new Map();
     const tools = useLegacy ? legacyTools : smartTools;
     /**
-     * Shared DOM tools (6 tools)
+     * Shared DOM tools
      *
-     * Element query, interaction, navigation, and console operations.
+     * Element query, navigation, and console operations.
      * Available in both legacy and smart modes.
      *
-     * Tools: query_elements, click_element, fill_element, navigate,
-     *        get_console_logs, inspect_element
+     * Tools: query_elements, fill_element, navigate,
+     *        get_console_logs, inspect_element, get_page_text
      */
     addHandler(handlers, 'query_elements', tools, queryElements);
-    addHandler(handlers, 'click_element', tools, clickElement);
     addHandler(handlers, 'fill_element', tools, fillElement);
     addHandler(handlers, 'navigate', tools, navigate);
     addHandler(handlers, 'get_console_logs', tools, getConsoleLogs);
     addHandler(handlers, 'inspect_element', tools, inspectElement);
-    addHandler(handlers, 'scroll', tools, scroll);
     addHandler(handlers, 'get_page_text', tools, getPageText);
     /**
      * Shared connection tools (3 tools)
@@ -82,7 +125,17 @@ export function createToolHandlers(useLegacy, legacyTools, smartTools) {
     addHandler(handlers, 'chrome_disconnect', tools, chromeDisconnect);
     if (useLegacy) {
         /**
-         * Legacy-specific tools (15 tools)
+         * Legacy-specific DOM tools (2 tools)
+         *
+         * Granular click and scroll operations.
+         * Only available when USE_LEGACY_TOOLS=true.
+         *
+         * DOM: click_element, scroll
+         */
+        addHandler(handlers, 'click_element', tools, clickElement);
+        addHandler(handlers, 'scroll', tools, scroll);
+        /**
+         * Legacy-specific connection and debugger tools (15 tools)
          *
          * Granular Chrome connection and debugger operations.
          * Only available when USE_LEGACY_TOOLS=true.
@@ -111,7 +164,16 @@ export function createToolHandlers(useLegacy, legacyTools, smartTools) {
     }
     else {
         /**
-         * Smart-specific tools (9 tools)
+         * Smart-specific DOM tool (1 tool)
+         *
+         * Unified action-based DOM interaction.
+         * Only available when USE_LEGACY_TOOLS=false (default).
+         *
+         * DOM: interact (consolidates click_element and scroll)
+         */
+        addHandler(handlers, 'interact', tools, interact);
+        /**
+         * Smart-specific connection and debugger tools (9 tools)
          *
          * Consolidated action-based Chrome connection and debugger operations.
          * Only available when USE_LEGACY_TOOLS=false (default).

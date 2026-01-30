@@ -6,7 +6,7 @@ describe('Cherry Chrome MCP Server', () => {
     assert.ok(true, 'Basic test passes');
   });
 
-  it('should have all 21 tools defined', () => {
+  it('should have all 24 legacy tools defined', () => {
     // Chrome Connection Tools (5)
     const chromeTools = [
       'chrome_connect',
@@ -16,13 +16,16 @@ describe('Cherry Chrome MCP Server', () => {
       'chrome_disconnect',
     ];
 
-    // DOM Tools (5)
+    // DOM Tools (8)
     const domTools = [
       'query_elements',
       'click_element',
       'fill_element',
       'navigate',
       'get_console_logs',
+      'inspect_element',
+      'scroll',
+      'get_page_text',
     ];
 
     // Debugger Tools (11)
@@ -44,14 +47,63 @@ describe('Cherry Chrome MCP Server', () => {
 
     assert.strictEqual(
       expectedTools.length,
-      21,
-      'Should have 21 tools total (5 chrome + 5 dom + 11 debugger)'
+      24,
+      'Should have 24 legacy tools total (5 chrome + 8 dom + 11 debugger)'
     );
 
     // Verify categories
     assert.strictEqual(chromeTools.length, 5, 'Should have 5 Chrome connection tools');
-    assert.strictEqual(domTools.length, 5, 'Should have 5 DOM tools');
+    assert.strictEqual(domTools.length, 8, 'Should have 8 DOM tools');
     assert.strictEqual(debuggerTools.length, 11, 'Should have 11 debugger tools');
+  });
+
+  it('should have all 19 smart mode tools defined', () => {
+    // Chrome Connection Tools (4)
+    const chromeTools = [
+      'connect',
+      'chrome_list_connections',
+      'chrome_switch_connection',
+      'chrome_disconnect',
+    ];
+
+    // Connection Navigation (1)
+    const navigationTools = ['target'];
+
+    // DOM Tools (6)
+    const domTools = [
+      'query_elements',
+      'interact', // consolidated click_element + scroll
+      'fill_element',
+      'navigate',
+      'get_console_logs',
+      'inspect_element',
+      'get_page_text',
+    ];
+
+    // Debugger Tools (7)
+    const debuggerTools = [
+      'enable_debug_tools',
+      'breakpoint',
+      'step',
+      'execution',
+      'call_stack',
+      'evaluate',
+      'pause_on_exceptions',
+    ];
+
+    const expectedTools = [...chromeTools, ...navigationTools, ...domTools, ...debuggerTools];
+
+    assert.strictEqual(
+      expectedTools.length,
+      19,
+      'Should have 19 smart mode tools total (4 chrome + 1 navigation + 7 dom + 7 debugger)'
+    );
+
+    // Verify categories
+    assert.strictEqual(chromeTools.length, 4, 'Should have 4 Chrome connection tools');
+    assert.strictEqual(navigationTools.length, 1, 'Should have 1 navigation tool');
+    assert.strictEqual(domTools.length, 7, 'Should have 7 DOM tools');
+    assert.strictEqual(debuggerTools.length, 7, 'Should have 7 debugger tools');
   });
 
   it('should have correct config values', async () => {

@@ -97,6 +97,91 @@ const toolMetadata = {
         required: ['selector'],
       },
     },
+    interact: {
+      description: 'Interact with page elements: click or scroll. Use "action" field to choose behavior. Click requires selector; scroll requires either direction+pixels or a selector.',
+      inputSchema: {
+        type: 'object' as const,
+        oneOf: [
+          {
+            title: 'Click Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'click',
+                description: 'Action type: click',
+              },
+              selector: {
+                type: 'string' as const,
+                description: 'CSS selector for the element to click',
+              },
+              index: {
+                type: 'number' as const,
+                description: 'Which matching element to click (0 = first)',
+                default: 0,
+              },
+              include_context: {
+                type: 'boolean' as const,
+                description: 'Include element state after click (default: true)',
+                default: true,
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action', 'selector'],
+            additionalProperties: false,
+          },
+          {
+            title: 'Scroll Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'scroll',
+                description: 'Action type: scroll',
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action'],
+            oneOf: [
+              {
+                title: 'Scroll by direction',
+                properties: {
+                  direction: {
+                    type: 'string' as const,
+                    enum: ['top', 'bottom', 'up', 'down'],
+                    description: 'Scroll direction',
+                    default: 'down',
+                  },
+                  pixels: {
+                    type: 'number' as const,
+                    description: 'Pixels to scroll for up/down (default: 500)',
+                    default: 500,
+                  },
+                },
+                additionalProperties: false,
+              },
+              {
+                title: 'Scroll to element',
+                properties: {
+                  selector: {
+                    type: 'string' as const,
+                    description: 'CSS selector of element to scroll into view',
+                  },
+                },
+                required: ['selector'],
+                additionalProperties: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
     fillElement: {
       description:
         'Fill text into an input element matching the CSS selector. Use query_elements first to verify the input exists.',
@@ -751,12 +836,11 @@ const smartTools: Tool[] = [
   },
   // DOM Tools (from shared metadata)
   { name: 'query_elements', ...toolMetadata.dom.queryElements },
-  { name: 'click_element', ...toolMetadata.dom.clickElement },
+  { name: 'interact', ...toolMetadata.dom.interact },
   { name: 'fill_element', ...toolMetadata.dom.fillElement },
   { name: 'navigate', ...toolMetadata.dom.navigate },
   { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
   { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
-  { name: 'scroll', ...toolMetadata.dom.scroll },
   { name: 'get_page_text', ...toolMetadata.dom.getPageText },
   // Debugger Tools (consolidated)
   {
