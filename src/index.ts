@@ -179,6 +179,182 @@ const toolMetadata = {
               },
             ],
           },
+          {
+            title: 'Right-click Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'right-click',
+                description: 'Action type: right-click (context menu)',
+              },
+              selector: {
+                type: 'string' as const,
+                description: 'CSS selector for the element to right-click',
+              },
+              index: {
+                type: 'number' as const,
+                description: 'Which matching element to right-click (0 = first)',
+                default: 0,
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action', 'selector'],
+            additionalProperties: false,
+          },
+          {
+            title: 'Double-click Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'double-click',
+                description: 'Action type: double-click',
+              },
+              selector: {
+                type: 'string' as const,
+                description: 'CSS selector for the element to double-click',
+              },
+              index: {
+                type: 'number' as const,
+                description: 'Which matching element to double-click (0 = first)',
+                default: 0,
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action', 'selector'],
+            additionalProperties: false,
+          },
+          {
+            title: 'Focus Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'focus',
+                description: 'Action type: focus (set keyboard focus)',
+              },
+              selector: {
+                type: 'string' as const,
+                description: 'CSS selector for the element to focus',
+              },
+              index: {
+                type: 'number' as const,
+                description: 'Which matching element to focus (0 = first)',
+                default: 0,
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action', 'selector'],
+            additionalProperties: false,
+          },
+          {
+            title: 'Blur Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'blur',
+                description: 'Action type: blur (remove focus)',
+              },
+              selector: {
+                type: 'string' as const,
+                description: 'CSS selector for the element to blur',
+              },
+              index: {
+                type: 'number' as const,
+                description: 'Which matching element to blur (0 = first)',
+                default: 0,
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action', 'selector'],
+            additionalProperties: false,
+          },
+          {
+            title: 'Press Key Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'press-key',
+                description: 'Action type: press key',
+              },
+              key: {
+                type: 'string' as const,
+                description:
+                  'Key to press: "Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", or single char. Supports combinations: "Control+a", "Shift+Enter"',
+              },
+              selector: {
+                type: 'string' as const,
+                description: 'CSS selector for element to focus before pressing key (optional)',
+              },
+              index: {
+                type: 'number' as const,
+                description: 'Which matching element to focus (0 = first)',
+                default: 0,
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action', 'key'],
+            additionalProperties: false,
+          },
+          {
+            title: 'Select Option Action',
+            type: 'object' as const,
+            properties: {
+              action: {
+                type: 'string' as const,
+                const: 'select-option',
+                description: 'Action type: select option in a <select> element',
+              },
+              selector: {
+                type: 'string' as const,
+                description: 'CSS selector for the <select> element',
+              },
+              index: {
+                type: 'number' as const,
+                description: 'Which matching <select> to interact with (0 = first)',
+                default: 0,
+              },
+              option_text: {
+                type: 'string' as const,
+                description:
+                  'Option text to match (case-insensitive substring). Use one of: option_text, option_index, or option_value',
+              },
+              option_index: {
+                type: 'number' as const,
+                description:
+                  'Option index (0-based). Use one of: option_text, option_index, or option_value',
+              },
+              option_value: {
+                type: 'string' as const,
+                description:
+                  'Option value attribute to match exactly. Use one of: option_text, option_index, or option_value',
+              },
+              connection_id: {
+                type: 'string' as const,
+                description: 'Chrome connection to use (uses active if not specified)',
+              },
+            },
+            required: ['action', 'selector'],
+            additionalProperties: false,
+          },
         ],
       },
     },

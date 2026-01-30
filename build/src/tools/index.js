@@ -6,7 +6,7 @@ export { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnect
 // New consolidated chrome tools
 export { chrome, connect, target, enableDebugTools, } from './chrome.js';
 // DOM interaction tools
-export { queryElements, clickElement, fillElement, navigate, getConsoleLogs, scroll, getPageText, } from './dom.js';
+export { queryElements, clickElement, fillElement, navigate, getConsoleLogs, scroll, getPageText, rightClick, doubleClick, focus, blur, pressKey, selectOption, } from './dom.js';
 // Console logs pure functions (for testing and reuse)
 export { filterLogsByLevel, limitLogs, determineChangeStatus, extractPageState, processLogs, formatTimeSince, formatPageStateHeader, formatLogWithStack, formatProcessedLogs, formatConsoleLogsOutput, updateQueryTracking, } from './console-logs.js';
 // Selector builder / element inspector

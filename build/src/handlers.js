@@ -10,7 +10,7 @@
  * - Handles both legacy (24 tools) and smart (18 tools) modes
  */
 // Import all tool functions
-import { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnection, chromeDisconnect, listTargets, switchTarget, connect, target, enableDebugTools, queryElements, clickElement, fillElement, navigate, getConsoleLogs, inspectElement, scroll, getPageText, debuggerEnable, debuggerSetBreakpoint, debuggerGetCallStack, debuggerEvaluateOnCallFrame, debuggerStepOver, debuggerStepInto, debuggerStepOut, debuggerResume, debuggerPause, debuggerRemoveBreakpoint, debuggerSetPauseOnExceptions, step, execution, breakpoint, callStack, evaluate, pauseOnExceptions, } from './tools/index.js';
+import { chromeConnect, chromeLaunch, chromeListConnections, chromeSwitchConnection, chromeDisconnect, listTargets, switchTarget, connect, target, enableDebugTools, queryElements, clickElement, fillElement, navigate, getConsoleLogs, inspectElement, scroll, getPageText, rightClick, doubleClick, focus, blur, pressKey, selectOption, debuggerEnable, debuggerSetBreakpoint, debuggerGetCallStack, debuggerEvaluateOnCallFrame, debuggerStepOver, debuggerStepInto, debuggerStepOut, debuggerResume, debuggerPause, debuggerRemoveBreakpoint, debuggerSetPauseOnExceptions, step, execution, breakpoint, callStack, evaluate, pauseOnExceptions, } from './tools/index.js';
 /**
  * Find tool definition by name.
  * @throws Error if tool not found
@@ -58,6 +58,88 @@ async function interact(args) {
                 direction: arg.direction,
                 pixels: arg.pixels,
                 selector: arg.selector,
+                connection_id: arg.connection_id,
+            });
+        case 'right-click':
+            if (!arg.selector) {
+                return {
+                    content: [{ type: 'text', text: 'Error: right-click action requires "selector" parameter' }],
+                    isError: true,
+                };
+            }
+            return rightClick({
+                selector: arg.selector,
+                index: arg.index,
+                connection_id: arg.connection_id,
+            });
+        case 'double-click':
+            if (!arg.selector) {
+                return {
+                    content: [{ type: 'text', text: 'Error: double-click action requires "selector" parameter' }],
+                    isError: true,
+                };
+            }
+            return doubleClick({
+                selector: arg.selector,
+                index: arg.index,
+                connection_id: arg.connection_id,
+            });
+        case 'focus':
+            if (!arg.selector) {
+                return {
+                    content: [{ type: 'text', text: 'Error: focus action requires "selector" parameter' }],
+                    isError: true,
+                };
+            }
+            return focus({
+                selector: arg.selector,
+                index: arg.index,
+                connection_id: arg.connection_id,
+            });
+        case 'blur':
+            if (!arg.selector) {
+                return {
+                    content: [{ type: 'text', text: 'Error: blur action requires "selector" parameter' }],
+                    isError: true,
+                };
+            }
+            return blur({
+                selector: arg.selector,
+                index: arg.index,
+                connection_id: arg.connection_id,
+            });
+        case 'press-key':
+            if (!arg.key) {
+                return {
+                    content: [{ type: 'text', text: 'Error: press-key action requires "key" parameter' }],
+                    isError: true,
+                };
+            }
+            return pressKey({
+                key: arg.key,
+                selector: arg.selector,
+                index: arg.index,
+                connection_id: arg.connection_id,
+            });
+        case 'select-option':
+            if (!arg.selector) {
+                return {
+                    content: [{ type: 'text', text: 'Error: select-option action requires "selector" parameter' }],
+                    isError: true,
+                };
+            }
+            if (!arg.option_text && arg.option_index === undefined && !arg.option_value) {
+                return {
+                    content: [{ type: 'text', text: 'Error: select-option requires one of: option_text, option_index, or option_value' }],
+                    isError: true,
+                };
+            }
+            return selectOption({
+                selector: arg.selector,
+                index: arg.index,
+                option_text: arg.option_text,
+                option_index: arg.option_index,
+                option_value: arg.option_value,
                 connection_id: arg.connection_id,
             });
         default:

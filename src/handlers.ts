@@ -34,6 +34,12 @@ import {
   inspectElement,
   scroll,
   getPageText,
+  rightClick,
+  doubleClick,
+  focus,
+  blur,
+  pressKey,
+  selectOption,
   debuggerEnable,
   debuggerSetBreakpoint,
   debuggerGetCallStack,
@@ -71,12 +77,16 @@ function findTool(tools: Tool[], name: string): Tool {
  */
 async function interact(args: unknown): Promise<ToolResult> {
   const arg = args as {
-    action: 'click' | 'scroll';
+    action: 'click' | 'scroll' | 'right-click' | 'double-click' | 'focus' | 'blur' | 'press-key' | 'select-option';
     selector?: string;
     index?: number;
     include_context?: boolean;
     direction?: 'top' | 'bottom' | 'up' | 'down';
     pixels?: number;
+    key?: string;
+    option_text?: string;
+    option_index?: number;
+    option_value?: string;
     connection_id?: string;
   };
 
@@ -111,6 +121,94 @@ async function interact(args: unknown): Promise<ToolResult> {
         direction: arg.direction,
         pixels: arg.pixels,
         selector: arg.selector,
+        connection_id: arg.connection_id,
+      });
+
+    case 'right-click':
+      if (!arg.selector) {
+        return {
+          content: [{ type: 'text', text: 'Error: right-click action requires "selector" parameter' }],
+          isError: true,
+        };
+      }
+      return rightClick({
+        selector: arg.selector,
+        index: arg.index,
+        connection_id: arg.connection_id,
+      });
+
+    case 'double-click':
+      if (!arg.selector) {
+        return {
+          content: [{ type: 'text', text: 'Error: double-click action requires "selector" parameter' }],
+          isError: true,
+        };
+      }
+      return doubleClick({
+        selector: arg.selector,
+        index: arg.index,
+        connection_id: arg.connection_id,
+      });
+
+    case 'focus':
+      if (!arg.selector) {
+        return {
+          content: [{ type: 'text', text: 'Error: focus action requires "selector" parameter' }],
+          isError: true,
+        };
+      }
+      return focus({
+        selector: arg.selector,
+        index: arg.index,
+        connection_id: arg.connection_id,
+      });
+
+    case 'blur':
+      if (!arg.selector) {
+        return {
+          content: [{ type: 'text', text: 'Error: blur action requires "selector" parameter' }],
+          isError: true,
+        };
+      }
+      return blur({
+        selector: arg.selector,
+        index: arg.index,
+        connection_id: arg.connection_id,
+      });
+
+    case 'press-key':
+      if (!arg.key) {
+        return {
+          content: [{ type: 'text', text: 'Error: press-key action requires "key" parameter' }],
+          isError: true,
+        };
+      }
+      return pressKey({
+        key: arg.key,
+        selector: arg.selector,
+        index: arg.index,
+        connection_id: arg.connection_id,
+      });
+
+    case 'select-option':
+      if (!arg.selector) {
+        return {
+          content: [{ type: 'text', text: 'Error: select-option action requires "selector" parameter' }],
+          isError: true,
+        };
+      }
+      if (!arg.option_text && arg.option_index === undefined && !arg.option_value) {
+        return {
+          content: [{ type: 'text', text: 'Error: select-option requires one of: option_text, option_index, or option_value' }],
+          isError: true,
+        };
+      }
+      return selectOption({
+        selector: arg.selector,
+        index: arg.index,
+        option_text: arg.option_text,
+        option_index: arg.option_index,
+        option_value: arg.option_value,
         connection_id: arg.connection_id,
       });
 

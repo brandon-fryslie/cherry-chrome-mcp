@@ -30,6 +30,12 @@ export {
   getConsoleLogs,
   scroll,
   getPageText,
+  rightClick,
+  doubleClick,
+  focus,
+  blur,
+  pressKey,
+  selectOption,
 } from './dom.js';
 
 // Console logs pure functions (for testing and reuse)

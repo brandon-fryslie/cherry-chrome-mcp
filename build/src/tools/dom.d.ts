@@ -135,4 +135,105 @@ export declare function getPageText(args: {
     }>;
     isError?: boolean;
 }>;
+/**
+ * Right-click on an element (dispatch contextmenu event).
+ *
+ * Useful for testing context menu handlers and right-click functionality.
+ */
+export declare function rightClick(args: {
+    selector: string;
+    index?: number;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
+/**
+ * Double-click on an element.
+ *
+ * Useful for text selection, grid row selection, and double-click handlers.
+ */
+export declare function doubleClick(args: {
+    selector: string;
+    index?: number;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
+/**
+ * Focus on an element (set keyboard focus).
+ *
+ * Useful for focus management and accessibility testing.
+ */
+export declare function focus(args: {
+    selector: string;
+    index?: number;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
+/**
+ * Blur an element (remove keyboard focus).
+ *
+ * Useful for testing blur handlers and focus management.
+ */
+export declare function blur(args: {
+    selector: string;
+    index?: number;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
+/**
+ * Press a key on the keyboard.
+ *
+ * Supports single keys (Enter, Escape, Tab, ArrowUp, etc.) and combinations (Control+a, Shift+Enter).
+ * If selector provided, focuses element first. Otherwise dispatches on document.activeElement.
+ */
+export declare function pressKey(args: {
+    key: string;
+    selector?: string;
+    index?: number;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
+/**
+ * Select an option from a <select> dropdown element.
+ *
+ * Supports selection by text (case-insensitive), index, or value attribute.
+ */
+export declare function selectOption(args: {
+    selector: string;
+    index?: number;
+    option_text?: string;
+    option_index?: number;
+    option_value?: string;
+    connection_id?: string;
+}): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError?: boolean;
+}>;
 //# sourceMappingURL=dom.d.ts.map

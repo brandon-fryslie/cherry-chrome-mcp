@@ -811,3 +811,449 @@ export async function getPageText(args: {
     return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
+
+
+/**
+ * Right-click on an element (dispatch contextmenu event).
+ *
+ * Useful for testing context menu handlers and right-click functionality.
+ */
+export async function rightClick(args: {
+  selector: string;
+  index?: number;
+  connection_id?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const selector = args.selector;
+  const index = args.index ?? 0;
+
+  try {
+    const page = browserManager.getPageOrThrow(args.connection_id);
+    const escapedSelector = escapeForJs(selector);
+
+    const script = `
+      (() => {
+        const elements = document.querySelectorAll('${escapedSelector}');
+        if (elements.length === 0) {
+          return { success: false, error: 'No elements found matching selector' };
+        }
+        if (${index} >= elements.length) {
+          return { success: false, error: 'Only ' + elements.length + ' element(s) found, index ${index} out of range' };
+        }
+
+        const element = elements[${index}];
+        const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, view: window });
+        element.dispatchEvent(event);
+
+        return {
+          success: true,
+          tag: element.tagName.toLowerCase(),
+          text: (element.textContent || '').trim().substring(0, 50)
+        };
+      })()
+    `;
+
+    const result = await page.evaluate(script) as { success: boolean; error?: string; tag?: string; text?: string };
+
+    if (!result.success) {
+      return errorResponse(result.error || 'Right-click failed');
+    }
+
+    let response = `Right-clicked <${result.tag}> at index ${index}`;
+    if (result.text) {
+      response += `: ${result.text}`;
+    }
+
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+
+/**
+ * Double-click on an element.
+ *
+ * Useful for text selection, grid row selection, and double-click handlers.
+ */
+export async function doubleClick(args: {
+  selector: string;
+  index?: number;
+  connection_id?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const selector = args.selector;
+  const index = args.index ?? 0;
+
+  try {
+    const page = browserManager.getPageOrThrow(args.connection_id);
+    const escapedSelector = escapeForJs(selector);
+
+    const script = `
+      (() => {
+        const elements = document.querySelectorAll('${escapedSelector}');
+        if (elements.length === 0) {
+          return { success: false, error: 'No elements found matching selector' };
+        }
+        if (${index} >= elements.length) {
+          return { success: false, error: 'Only ' + elements.length + ' element(s) found, index ${index} out of range' };
+        }
+
+        const element = elements[${index}];
+        const event = new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window });
+        element.dispatchEvent(event);
+
+        return {
+          success: true,
+          tag: element.tagName.toLowerCase(),
+          text: (element.textContent || '').trim().substring(0, 50)
+        };
+      })()
+    `;
+
+    const result = await page.evaluate(script) as { success: boolean; error?: string; tag?: string; text?: string };
+
+    if (!result.success) {
+      return errorResponse(result.error || 'Double-click failed');
+    }
+
+    let response = `Double-clicked <${result.tag}> at index ${index}`;
+    if (result.text) {
+      response += `: ${result.text}`;
+    }
+
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+
+/**
+ * Focus on an element (set keyboard focus).
+ *
+ * Useful for focus management and accessibility testing.
+ */
+export async function focus(args: {
+  selector: string;
+  index?: number;
+  connection_id?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const selector = args.selector;
+  const index = args.index ?? 0;
+
+  try {
+    const page = browserManager.getPageOrThrow(args.connection_id);
+    const escapedSelector = escapeForJs(selector);
+
+    const script = `
+      (() => {
+        const elements = document.querySelectorAll('${escapedSelector}');
+        if (elements.length === 0) {
+          return { success: false, error: 'No elements found matching selector' };
+        }
+        if (${index} >= elements.length) {
+          return { success: false, error: 'Only ' + elements.length + ' element(s) found, index ${index} out of range' };
+        }
+
+        const element = elements[${index}];
+        element.focus();
+        element.dispatchEvent(new Event('focus', { bubbles: false }));
+
+        return {
+          success: true,
+          tag: element.tagName.toLowerCase(),
+          text: (element.textContent || '').trim().substring(0, 50)
+        };
+      })()
+    `;
+
+    const result = await page.evaluate(script) as { success: boolean; error?: string; tag?: string; text?: string };
+
+    if (!result.success) {
+      return errorResponse(result.error || 'Focus failed');
+    }
+
+    let response = `Focused <${result.tag}> at index ${index}`;
+    if (result.text) {
+      response += `: ${result.text}`;
+    }
+
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+
+/**
+ * Blur an element (remove keyboard focus).
+ *
+ * Useful for testing blur handlers and focus management.
+ */
+export async function blur(args: {
+  selector: string;
+  index?: number;
+  connection_id?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const selector = args.selector;
+  const index = args.index ?? 0;
+
+  try {
+    const page = browserManager.getPageOrThrow(args.connection_id);
+    const escapedSelector = escapeForJs(selector);
+
+    const script = `
+      (() => {
+        const elements = document.querySelectorAll('${escapedSelector}');
+        if (elements.length === 0) {
+          return { success: false, error: 'No elements found matching selector' };
+        }
+        if (${index} >= elements.length) {
+          return { success: false, error: 'Only ' + elements.length + ' element(s) found, index ${index} out of range' };
+        }
+
+        const element = elements[${index}];
+        element.blur();
+        element.dispatchEvent(new Event('blur', { bubbles: false }));
+
+        return {
+          success: true,
+          tag: element.tagName.toLowerCase(),
+          text: (element.textContent || '').trim().substring(0, 50)
+        };
+      })()
+    `;
+
+    const result = await page.evaluate(script) as { success: boolean; error?: string; tag?: string; text?: string };
+
+    if (!result.success) {
+      return errorResponse(result.error || 'Blur failed');
+    }
+
+    let response = `Blurred <${result.tag}> at index ${index}`;
+    if (result.text) {
+      response += `: ${result.text}`;
+    }
+
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+
+/**
+ * Press a key on the keyboard.
+ *
+ * Supports single keys (Enter, Escape, Tab, ArrowUp, etc.) and combinations (Control+a, Shift+Enter).
+ * If selector provided, focuses element first. Otherwise dispatches on document.activeElement.
+ */
+export async function pressKey(args: {
+  key: string;
+  selector?: string;
+  index?: number;
+  connection_id?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const key = args.key;
+  const selector = args.selector;
+  const index = args.index ?? 0;
+
+  try {
+    const page = browserManager.getPageOrThrow(args.connection_id);
+    let escapedSelector = '';
+    if (selector) {
+      escapedSelector = escapeForJs(selector);
+    }
+
+    const script = `
+      (() => {
+        let element = null;
+
+        if ('${escapedSelector}') {
+          const elements = document.querySelectorAll('${escapedSelector}');
+          if (elements.length === 0) {
+            return { success: false, error: 'No elements found matching selector' };
+          }
+          if (${index} >= elements.length) {
+            return { success: false, error: 'Only ' + elements.length + ' element(s) found, index ${index} out of range' };
+          }
+          element = elements[${index}];
+          element.focus();
+        } else {
+          element = document.activeElement;
+          if (!element || element === document.body) {
+            return { success: false, error: 'No element focused on page' };
+          }
+        }
+
+        // Parse key name
+        const keyStr = '${key}';
+        const parts = keyStr.split('+');
+        let keyCode = '';
+        let keyName = '';
+        let shiftKey = false;
+        let ctrlKey = false;
+        let altKey = false;
+        let metaKey = false;
+
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i].trim();
+          if (part === 'Control' || part === 'Ctrl') ctrlKey = true;
+          else if (part === 'Shift') shiftKey = true;
+          else if (part === 'Alt') altKey = true;
+          else if (part === 'Meta' || part === 'Cmd') metaKey = true;
+          else keyName = part;
+        }
+
+        // Map key name to code
+        const keyMap = {
+          'Enter': 'Enter',
+          'Escape': 'Escape',
+          'Tab': 'Tab',
+          'Backspace': 'Backspace',
+          'Delete': 'Delete',
+          'ArrowUp': 'ArrowUp',
+          'ArrowDown': 'ArrowDown',
+          'ArrowLeft': 'ArrowLeft',
+          'ArrowRight': 'ArrowRight',
+          'Home': 'Home',
+          'End': 'End',
+          'PageUp': 'PageUp',
+          'PageDown': 'PageDown',
+          'Space': ' ',
+        };
+
+        const code = keyMap[keyName] || keyName;
+
+        // Dispatch key events
+        const eventProps = {
+          key: code,
+          code: code,
+          bubbles: true,
+          cancelable: true,
+          shiftKey,
+          ctrlKey,
+          altKey,
+          metaKey
+        };
+
+        element.dispatchEvent(new KeyboardEvent('keydown', eventProps));
+        element.dispatchEvent(new KeyboardEvent('keypress', eventProps));
+        element.dispatchEvent(new KeyboardEvent('keyup', eventProps));
+
+        return {
+          success: true,
+          tag: element.tagName.toLowerCase(),
+          key: keyName
+        };
+      })()
+    `;
+
+    const result = await page.evaluate(script) as { success: boolean; error?: string; tag?: string; key?: string };
+
+    if (!result.success) {
+      return errorResponse(result.error || 'Press key failed');
+    }
+
+    const response = `Pressed key '${result.key}' on <${result.tag}>`;
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+
+/**
+ * Select an option from a <select> dropdown element.
+ *
+ * Supports selection by text (case-insensitive), index, or value attribute.
+ */
+export async function selectOption(args: {
+  selector: string;
+  index?: number;
+  option_text?: string;
+  option_index?: number;
+  option_value?: string;
+  connection_id?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const selector = args.selector;
+  const index = args.index ?? 0;
+  const optionText = args.option_text ? escapeForJs(args.option_text) : null;
+  const optionIndex = args.option_index;
+  const optionValue = args.option_value ? escapeForJs(args.option_value) : null;
+
+  try {
+    const page = browserManager.getPageOrThrow(args.connection_id);
+    const escapedSelector = escapeForJs(selector);
+
+    const script = `
+      (() => {
+        const selects = document.querySelectorAll('${escapedSelector}');
+        if (selects.length === 0) {
+          return { success: false, error: 'No elements found matching selector' };
+        }
+        if (${index} >= selects.length) {
+          return { success: false, error: 'Only ' + selects.length + ' element(s) found, index ${index} out of range' };
+        }
+
+        const select = selects[${index}];
+        if (select.tagName !== 'SELECT') {
+          return { success: false, error: 'Element is not a <select> (tag: ' + select.tagName.toLowerCase() + ')' };
+        }
+
+        const options = Array.from(select.options);
+        let selectedOption = null;
+
+        // Find option by specified method
+        ${optionText ? `
+        // Find by text (case-insensitive substring match)
+        const searchText = '${optionText}';
+        const matches = options.filter(opt => opt.textContent.toLowerCase().includes(searchText.toLowerCase()));
+        if (matches.length === 0) {
+          const available = options.map(o => o.textContent).join(', ');
+          return { success: false, error: 'Option not found. Available: ' + available };
+        }
+        if (matches.length > 1) {
+          const matchTexts = matches.map(o => o.textContent).join(', ');
+          return { success: false, error: 'Multiple options match text. Matches: ' + matchTexts };
+        }
+        selectedOption = matches[0];
+        ` : optionIndex !== undefined ? `
+        // Find by index
+        if (${optionIndex} >= options.length) {
+          return { success: false, error: 'Option index ${optionIndex} out of range (only ' + options.length + ' options)' };
+        }
+        selectedOption = options[${optionIndex}];
+        ` : optionValue ? `
+        // Find by value
+        selectedOption = options.find(opt => opt.value === '${optionValue}');
+        if (!selectedOption) {
+          const available = options.map(o => o.value).join(', ');
+          return { success: false, error: 'Option with value not found. Available: ' + available };
+        }
+        ` : `
+        return { success: false, error: 'Must provide one of: option_text, option_index, or option_value' };
+        `}
+
+        // Set value and dispatch change event
+        select.value = selectedOption.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        return {
+          success: true,
+          selected: selectedOption.text || selectedOption.value
+        };
+      })()
+    `;
+
+    const result = await page.evaluate(script) as { success: boolean; error?: string; selected?: string };
+
+    if (!result.success) {
+      return errorResponse(result.error || 'Select option failed');
+    }
+
+    const response = `Selected option: ${result.selected}`;
+    return successResponse(response);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
