@@ -201,16 +201,53 @@ export async function connect(args: {
       return successResponse(response);
     } catch (error) {
       console.error(`[cherry-chrome] Connection failed: ${error}`);
+
+      // Check if port is still in use but connection failed
+      const stillInUse = await isPortInUse(port, host);
+      const suggestion = stillInUse
+        ? `Port ${port} is in use but connection failed. The process may be unresponsive.\n` +
+          `Try killing it: lsof -i :${port} | grep -v PID | awk '{print $2}' | xargs kill -9`
+        : `Port ${port} is no longer in use. Chrome may have crashed or been killed.\n` +
+          `Try launching fresh: connect({ url: '${args.url}' })`;
+
       return errorResponse(
         `Failed to connect to Chrome at ${host}:${port}: ${error}\n\n` +
-        `Make sure Chrome is running with remote debugging enabled:\n` +
-        `  chrome --remote-debugging-port=${port}`
+        `${suggestion}\n\n` +
+        `Or to launch new Chrome on a fresh random port:\n` +
+        `  connect({ url: '${args.url}' })`
       );
     }
   }
 
   // Case 2: No port provided - launch new Chrome on random port
-  const randomPort = getRandomPort();
+  let randomPort = getRandomPort();
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  // Retry if port is already in use
+  while (attempts < maxAttempts) {
+    const portInUse = await isPortInUse(randomPort);
+    if (!portInUse) {
+      break;
+    }
+
+    console.error(
+      `[cherry-chrome] Port ${randomPort} is in use, trying another random port (attempt ${attempts + 1}/${maxAttempts})...`
+    );
+    randomPort = getRandomPort();
+    attempts++;
+  }
+
+  if (attempts >= maxAttempts) {
+    return errorResponse(
+      `Failed to find an available port after ${maxAttempts} attempts.\n\n` +
+      `This may indicate that many Chrome processes are still running.\n` +
+      `Try:\n` +
+      `1. Kill existing Chrome processes: killall chrome\n` +
+      `2. Or specify an explicit port: connect({ url: '...', port: 9222 })`
+    );
+  }
+
   console.error(`[cherry-chrome] No port specified, launching Chrome on random port ${randomPort}...`);
 
   try {
