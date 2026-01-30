@@ -46,7 +46,7 @@ claude mcp add --scope project cherry-chrome -- node /absolute/path/to/build/src
 
 The server supports two tool modes via `USE_LEGACY_TOOLS` environment variable:
 
-- **Smart Mode (default):** 19 consolidated action-based tools (`connect`, `interact`, `step`, `execution`, etc.)
+- **Smart Mode (default):** 19 consolidated action-based tools (`connect`, `interact` [8 actions], `step`, `execution`, etc.)
 - **Legacy Mode:** 24 granular tools (`chrome_connect`, `click_element`, `scroll`, `debugger_enable`, etc.)
 
 See `FEATURE-TOGGLE.md` for full details, usage examples, and tool comparison table.
@@ -106,7 +106,7 @@ src/
 **Smart Mode (19 tools):**
 - Chrome Connection (4): `connect`, `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`
 - Navigation (1): `target` (consolidated list_targets/switch_target)
-- DOM Interaction (7): `query_elements`, `interact` (click + scroll consolidated), `fill_element`, `navigate`, `get_console_logs`, `inspect_element`, `get_page_text`
+- DOM Interaction (7): `query_elements`, `interact` (8 actions: click, scroll, right-click, double-click, focus, blur, press-key, select-option), `fill_element`, `navigate`, `get_console_logs`, `inspect_element`, `get_page_text`
 - Debugger (7): `enable_debug_tools`, `breakpoint`, `step`, `execution`, `call_stack`, `evaluate`, `pause_on_exceptions`
 
 **Shared Tools (6 tools in both modes):**
@@ -263,10 +263,59 @@ interact({ action: 'scroll', direction: 'top' })
 interact({ action: 'scroll', selector: '#error-message' })
 ```
 
+3. **Right-click Action** - Context menu trigger
+```typescript
+interact({ action: 'right-click', selector: '.menu-item' })
+```
+
+4. **Double-click Action** - Element selection, grid rows, map zoom
+```typescript
+interact({ action: 'double-click', selector: 'span.text-to-select' })
+```
+
+5. **Focus Action** - Set keyboard focus (accessibility testing)
+```typescript
+interact({ action: 'focus', selector: 'input#email' })
+```
+
+6. **Blur Action** - Remove focus
+```typescript
+interact({ action: 'blur', selector: 'input#email' })
+```
+
+7. **Press Key Action** - Keyboard events (Enter, Tab, Escape, arrows, combinations)
+```typescript
+// Single key on focused element
+interact({ action: 'press-key', key: 'Enter' })
+
+// Key with selector (focuses first)
+interact({ action: 'press-key', selector: 'form', key: 'Enter' })
+
+// Key combinations
+interact({ action: 'press-key', key: 'Control+a' })
+interact({ action: 'press-key', key: 'Shift+Tab' })
+
+// Navigation keys
+interact({ action: 'press-key', key: 'ArrowDown' })
+```
+
+8. **Select Option Action** - Dropdown selection
+```typescript
+// By text (case-insensitive)
+interact({ action: 'select-option', selector: 'select#country', option_text: 'United States' })
+
+// By index
+interact({ action: 'select-option', selector: 'select#country', option_index: 2 })
+
+// By value
+interact({ action: 'select-option', selector: 'select#country', option_value: 'us' })
+```
+
 **Schema Design:**
-- Root `oneOf` discriminates by action ('click' vs 'scroll')
-- Click requires: action + selector (optional: index, include_context, connection_id)
-- Scroll requires: action + (direction OR selector) (optional: pixels, connection_id)
+- Root `oneOf` discriminates by action (8 variants: click, scroll, right-click, double-click, focus, blur, press-key, select-option)
+- Each action has specific required/optional parameters
+- Press-key selector is optional (uses document.activeElement if not provided)
+- Select-option requires one of: option_text, option_index, or option_value
 - `additionalProperties: false` prevents invalid parameter combinations
 
 **Legacy Mode Alternative:**
