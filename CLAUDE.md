@@ -46,8 +46,8 @@ claude mcp add --scope project cherry-chrome -- node /absolute/path/to/build/src
 
 The server supports two tool modes via `USE_LEGACY_TOOLS` environment variable:
 
-- **Smart Mode (default):** 18 consolidated action-based tools (`connect`, `step`, `execution`, etc.)
-- **Legacy Mode:** 24 granular tools (`chrome_connect`, `debugger_enable`, etc.)
+- **Smart Mode (default):** 19 consolidated action-based tools (`connect`, `interact`, `step`, `execution`, etc.)
+- **Legacy Mode:** 24 granular tools (`chrome_connect`, `click_element`, `scroll`, `debugger_enable`, etc.)
 
 See `FEATURE-TOGGLE.md` for full details, usage examples, and tool comparison table.
 
@@ -100,16 +100,17 @@ src/
 
 **Legacy Mode (24 tools):**
 - Chrome Connection (7): `chrome_connect`, `chrome_launch`, `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `list_targets`, `switch_target`
-- DOM Interaction (6): `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`, `inspect_element`
+- DOM Interaction (8): `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`, `inspect_element`, `scroll`, `get_page_text`
 - Debugger (11): `debugger_enable`, `debugger_set_breakpoint`, `debugger_get_call_stack`, `debugger_evaluate_on_call_frame`, `debugger_step_over`, `debugger_step_into`, `debugger_step_out`, `debugger_resume`, `debugger_pause`, `debugger_remove_breakpoint`, `debugger_set_pause_on_exceptions`
 
-**Smart Mode (18 tools):**
-- Chrome Connection (5): `connect` (smart launch/connect), `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`, `target` (consolidated)
-- DOM Interaction (6): Same as legacy mode
-- Debugger (7): `enable_debug_tools`, `breakpoint` (consolidated), `step` (consolidated), `execution` (consolidated), `call_stack`, `evaluate`, `pause_on_exceptions`
+**Smart Mode (19 tools):**
+- Chrome Connection (4): `connect`, `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`
+- Navigation (1): `target` (consolidated list_targets/switch_target)
+- DOM Interaction (7): `query_elements`, `interact` (click + scroll consolidated), `fill_element`, `navigate`, `get_console_logs`, `inspect_element`, `get_page_text`
+- Debugger (7): `enable_debug_tools`, `breakpoint`, `step`, `execution`, `call_stack`, `evaluate`, `pause_on_exceptions`
 
-**Shared Tools (9 tools in both modes):**
-- DOM: `query_elements`, `click_element`, `fill_element`, `navigate`, `get_console_logs`, `inspect_element`
+**Shared Tools (6 tools in both modes):**
+- DOM: `query_elements`, `fill_element`, `navigate`, `get_console_logs`, `inspect_element`, `get_page_text`
 - Connection: `chrome_list_connections`, `chrome_switch_connection`, `chrome_disconnect`
 
 ### Smart Connect Tool
@@ -231,6 +232,47 @@ handlers.set('click_element', {
 **Testing**:
 - `tests/toolRegistry.test.ts` - Registry module unit tests (12 tests)
 - `tests/toolHandlers.test.ts` - Handler creation validation (13 tests)
+
+### Unified Interact Tool (Smart Mode)
+
+The `interact` tool consolidates click and scroll operations into a single action-based interface using a discriminated union schema. Available in **smart mode only**.
+
+**Actions:**
+
+1. **Click Action** - Click an element by CSS selector
+```typescript
+// Click first matching button
+interact({ action: 'click', selector: 'button.submit' })
+
+// Click specific element index
+interact({ action: 'click', selector: 'button', index: 2 })
+
+// Include element state after click
+interact({ action: 'click', selector: '#btn', include_context: true })
+```
+
+2. **Scroll Action** - Scroll by direction or to element
+```typescript
+// Scroll down 300px
+interact({ action: 'scroll', direction: 'down', pixels: 300 })
+
+// Scroll to top/bottom
+interact({ action: 'scroll', direction: 'top' })
+
+// Scroll element into view
+interact({ action: 'scroll', selector: '#error-message' })
+```
+
+**Schema Design:**
+- Root `oneOf` discriminates by action ('click' vs 'scroll')
+- Click requires: action + selector (optional: index, include_context, connection_id)
+- Scroll requires: action + (direction OR selector) (optional: pixels, connection_id)
+- `additionalProperties: false` prevents invalid parameter combinations
+
+**Legacy Mode Alternative:**
+In legacy mode, use separate tools:
+- `click_element(selector, index?, include_context?, connection_id?)`
+- `scroll(direction?, pixels?, selector?, connection_id?)`
 
 ### Query Elements with Filters
 
