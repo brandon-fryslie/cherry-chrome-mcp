@@ -124,6 +124,34 @@ export async function connect(args: {
   const connectionId = args.connection_id ?? 'default';
   const headless = args.headless ?? true;
 
+  // Check if connection already exists - if so, reuse it
+  const existingPage = browserManager.getPage(connectionId);
+  if (existingPage) {
+    console.error(`[cherry-chrome] Connection '${connectionId}' already exists, reusing...`);
+
+    try {
+      // Navigate to the new URL using the existing connection
+      await existingPage.goto(args.url, { waitUntil: 'networkidle2' });
+
+      // Gather context about the page
+      const context = await gatherNavigateContext(existingPage, connectionId);
+
+      const response = [
+        `Using existing connection '${connectionId}'`,
+        `Navigated to: ${args.url}`,
+        '',
+        context || '',
+      ].filter(Boolean).join('\n');
+
+      return successResponse(response);
+    } catch (error) {
+      return errorResponse(
+        `Failed to navigate existing connection: ${error}\n\n` +
+        `Try disconnecting first: chrome_disconnect({ connection_id: '${connectionId}' })`
+      );
+    }
+  }
+
   // Case 1: Port explicitly provided - try to connect to existing Chrome
   if (args.port !== undefined) {
     const port = args.port;
