@@ -1,0 +1,11 @@
+{
+  "name": "cherry-chrome",
+  "version": "0.1.0",
+  "description": "Chrome automation MCP server with CSS selector-based querying, JavaScript debugger support, and comprehensive tool documentation",
+  "author": {
+    "name": "bmf"
+  },
+  "license": "MIT",
+  "keywords": ["chrome", "browser", "automation", "debugging", "mcp"],
+  "strict": false
+}

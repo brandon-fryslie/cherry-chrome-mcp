@@ -21,8 +21,16 @@
     "puppeteer",
     "css-selectors"
   ],
-  "author": "",
+  "author": "Brandon Fryslie <brandon@fryslie.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brandon-fryslie/cherry-chrome-mcp.git"
+  },
+  "homepage": "https://github.com/brandon-fryslie/cherry-chrome-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/brandon-fryslie/cherry-chrome-mcp/issues"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
     "puppeteer": "^24.0.0"

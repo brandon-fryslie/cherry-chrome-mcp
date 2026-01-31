@@ -22,10 +22,12 @@ const server = new Server({
 /**
  * Shared tool metadata (eliminates duplication between legacy and smart modes)
  */
+// Skill reference appended to all tool descriptions for Claude Code plugin integration
+const SKILL_REF = ' Use the cherry-chrome-docs skill for detailed usage guide.';
 const toolMetadata = {
     dom: {
         queryElements: {
-            description: 'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).',
+            description: 'Find elements by CSS selector. Returns tag, text, id, classes, visibility. Returns up to limit elements (default 5, max 20).' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -56,7 +58,7 @@ const toolMetadata = {
             },
         },
         clickElement: {
-            description: 'Click an element matching the CSS selector. Use query_elements first to verify the element exists.',
+            description: 'Click an element matching the CSS selector. Use query_elements first to verify the element exists.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -83,264 +85,68 @@ const toolMetadata = {
             },
         },
         interact: {
-            description: 'Interact with page elements: click or scroll. Use "action" field to choose behavior. Click requires selector; scroll requires either direction+pixels or a selector.',
+            description: 'Interact with page elements. Actions: click, scroll, right-click, double-click, focus, blur, press-key, select-option. ' +
+                'Most actions require selector. scroll uses direction+pixels OR selector. press-key requires key (selector optional). ' +
+                'select-option requires selector + one of: option_text, option_index, option_value.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
-                oneOf: [
-                    {
-                        title: 'Click Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'click',
-                                description: 'Action type: click',
-                            },
-                            selector: {
-                                type: 'string',
-                                description: 'CSS selector for the element to click',
-                            },
-                            index: {
-                                type: 'number',
-                                description: 'Which matching element to click (0 = first)',
-                                default: 0,
-                            },
-                            include_context: {
-                                type: 'boolean',
-                                description: 'Include element state after click (default: true)',
-                                default: true,
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action', 'selector'],
-                        additionalProperties: false,
+                properties: {
+                    action: {
+                        type: 'string',
+                        enum: ['click', 'scroll', 'right-click', 'double-click', 'focus', 'blur', 'press-key', 'select-option'],
+                        description: 'Interaction type',
                     },
-                    {
-                        title: 'Scroll Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'scroll',
-                                description: 'Action type: scroll',
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action'],
-                        oneOf: [
-                            {
-                                title: 'Scroll by direction',
-                                properties: {
-                                    direction: {
-                                        type: 'string',
-                                        enum: ['top', 'bottom', 'up', 'down'],
-                                        description: 'Scroll direction',
-                                        default: 'down',
-                                    },
-                                    pixels: {
-                                        type: 'number',
-                                        description: 'Pixels to scroll for up/down (default: 500)',
-                                        default: 500,
-                                    },
-                                },
-                                additionalProperties: false,
-                            },
-                            {
-                                title: 'Scroll to element',
-                                properties: {
-                                    selector: {
-                                        type: 'string',
-                                        description: 'CSS selector of element to scroll into view',
-                                    },
-                                },
-                                required: ['selector'],
-                                additionalProperties: false,
-                            },
-                        ],
+                    selector: {
+                        type: 'string',
+                        description: 'CSS selector for the target element. Required for most actions. For scroll: scrolls element into view. For press-key: optional (focuses element first)',
                     },
-                    {
-                        title: 'Right-click Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'right-click',
-                                description: 'Action type: right-click (context menu)',
-                            },
-                            selector: {
-                                type: 'string',
-                                description: 'CSS selector for the element to right-click',
-                            },
-                            index: {
-                                type: 'number',
-                                description: 'Which matching element to right-click (0 = first)',
-                                default: 0,
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action', 'selector'],
-                        additionalProperties: false,
+                    index: {
+                        type: 'number',
+                        description: 'Which matching element (0 = first)',
+                        default: 0,
                     },
-                    {
-                        title: 'Double-click Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'double-click',
-                                description: 'Action type: double-click',
-                            },
-                            selector: {
-                                type: 'string',
-                                description: 'CSS selector for the element to double-click',
-                            },
-                            index: {
-                                type: 'number',
-                                description: 'Which matching element to double-click (0 = first)',
-                                default: 0,
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action', 'selector'],
-                        additionalProperties: false,
+                    include_context: {
+                        type: 'boolean',
+                        description: 'Include element state after action (click only, default: true)',
+                        default: true,
                     },
-                    {
-                        title: 'Focus Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'focus',
-                                description: 'Action type: focus (set keyboard focus)',
-                            },
-                            selector: {
-                                type: 'string',
-                                description: 'CSS selector for the element to focus',
-                            },
-                            index: {
-                                type: 'number',
-                                description: 'Which matching element to focus (0 = first)',
-                                default: 0,
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action', 'selector'],
-                        additionalProperties: false,
+                    direction: {
+                        type: 'string',
+                        enum: ['top', 'bottom', 'up', 'down'],
+                        description: 'Scroll direction (scroll action only)',
+                        default: 'down',
                     },
-                    {
-                        title: 'Blur Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'blur',
-                                description: 'Action type: blur (remove focus)',
-                            },
-                            selector: {
-                                type: 'string',
-                                description: 'CSS selector for the element to blur',
-                            },
-                            index: {
-                                type: 'number',
-                                description: 'Which matching element to blur (0 = first)',
-                                default: 0,
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action', 'selector'],
-                        additionalProperties: false,
+                    pixels: {
+                        type: 'number',
+                        description: 'Pixels to scroll for up/down (scroll action only, default: 500)',
+                        default: 500,
                     },
-                    {
-                        title: 'Press Key Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'press-key',
-                                description: 'Action type: press key',
-                            },
-                            key: {
-                                type: 'string',
-                                description: 'Key to press: "Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", or single char. Supports combinations: "Control+a", "Shift+Enter"',
-                            },
-                            selector: {
-                                type: 'string',
-                                description: 'CSS selector for element to focus before pressing key (optional)',
-                            },
-                            index: {
-                                type: 'number',
-                                description: 'Which matching element to focus (0 = first)',
-                                default: 0,
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action', 'key'],
-                        additionalProperties: false,
+                    key: {
+                        type: 'string',
+                        description: 'Key to press (press-key action): "Enter", "Escape", "Tab", "ArrowUp", etc. Combinations: "Control+a", "Shift+Enter"',
                     },
-                    {
-                        title: 'Select Option Action',
-                        type: 'object',
-                        properties: {
-                            action: {
-                                type: 'string',
-                                const: 'select-option',
-                                description: 'Action type: select option in a <select> element',
-                            },
-                            selector: {
-                                type: 'string',
-                                description: 'CSS selector for the <select> element',
-                            },
-                            index: {
-                                type: 'number',
-                                description: 'Which matching <select> to interact with (0 = first)',
-                                default: 0,
-                            },
-                            option_text: {
-                                type: 'string',
-                                description: 'Option text to match (case-insensitive substring). Use one of: option_text, option_index, or option_value',
-                            },
-                            option_index: {
-                                type: 'number',
-                                description: 'Option index (0-based). Use one of: option_text, option_index, or option_value',
-                            },
-                            option_value: {
-                                type: 'string',
-                                description: 'Option value attribute to match exactly. Use one of: option_text, option_index, or option_value',
-                            },
-                            connection_id: {
-                                type: 'string',
-                                description: 'Chrome connection to use (uses active if not specified)',
-                            },
-                        },
-                        required: ['action', 'selector'],
-                        additionalProperties: false,
+                    option_text: {
+                        type: 'string',
+                        description: 'Option text to match, case-insensitive (select-option action)',
                     },
-                ],
+                    option_index: {
+                        type: 'number',
+                        description: 'Option index, 0-based (select-option action)',
+                    },
+                    option_value: {
+                        type: 'string',
+                        description: 'Option value attribute to match exactly (select-option action)',
+                    },
+                    connection_id: {
+                        type: 'string',
+                        description: 'Chrome connection to use',
+                    },
+                },
+                required: ['action'],
             },
         },
         fillElement: {
-            description: 'Fill text into an input element matching the CSS selector. Use query_elements first to verify the input exists.',
+            description: 'Fill text into an input element matching the CSS selector. Use query_elements first to verify the input exists.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -376,7 +182,7 @@ const toolMetadata = {
             },
         },
         navigate: {
-            description: 'Navigate to a URL and wait for page load.',
+            description: 'Navigate to a URL and wait for page load.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -398,7 +204,7 @@ const toolMetadata = {
             },
         },
         getConsoleLogs: {
-            description: 'Get console log messages from the browser. Messages are captured automatically. Use expand_errors to include full stack traces for error messages.',
+            description: 'Get console log messages from the browser. Messages are captured automatically. Use expand_errors to include full stack traces for error messages.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -425,7 +231,7 @@ const toolMetadata = {
             },
         },
         inspectElement: {
-            description: 'Discover CSS selectors from natural language descriptions and element attributes. Returns ranked selector candidates with stability scores. Use when you know what element you want but not its exact selector.',
+            description: 'Discover CSS selectors from natural language descriptions and element attributes. Returns ranked selector candidates with stability scores. Use when you know what element you want but not its exact selector.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -501,7 +307,7 @@ const toolMetadata = {
             },
         },
         scroll: {
-            description: 'Scroll the page. Use direction for relative scrolling, or selector to scroll to a specific element. Essential for reading content at the bottom of long pages.',
+            description: 'Scroll the page. Use direction for relative scrolling, or selector to scroll to a specific element. Essential for reading content at the bottom of long pages.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -527,7 +333,7 @@ const toolMetadata = {
             },
         },
         getPageText: {
-            description: 'Get text content from elements matching a selector. Returns just text without HTML structure. Use from_end=true to get the last N matches (useful for recent messages in conversations).',
+            description: 'Get text content from elements matching a selector. Returns just text without HTML structure. Use from_end=true to get the last N matches (useful for recent messages in conversations).' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -560,14 +366,14 @@ const toolMetadata = {
     },
     connection: {
         chromeListConnections: {
-            description: 'List all active Chrome connections with their status (URL, active, paused state).',
+            description: 'List all active Chrome connections with their status (URL, active, paused state).' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {},
             },
         },
         chromeSwitchConnection: {
-            description: 'Switch the active Chrome connection. All tools will use the active connection.',
+            description: 'Switch the active Chrome connection. All tools will use the active connection.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -580,7 +386,7 @@ const toolMetadata = {
             },
         },
         chromeDisconnect: {
-            description: 'Disconnect from a specific Chrome instance. If you disconnect the active connection, the next available will become active.',
+            description: 'Disconnect from a specific Chrome instance. If you disconnect the active connection, the next available will become active.' + SKILL_REF,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -601,7 +407,7 @@ const legacyTools = [
     // Chrome Connection Management
     {
         name: 'chrome_connect',
-        description: 'Connect to a Chrome instance running with remote debugging enabled. Chrome must be launched with --remote-debugging-port flag.',
+        description: 'Connect to a Chrome instance running with remote debugging enabled. Chrome must be launched with --remote-debugging-port flag.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -625,7 +431,7 @@ const legacyTools = [
     },
     {
         name: 'chrome_launch',
-        description: 'Launch a new Chrome instance with remote debugging enabled. Automatically connects after startup.',
+        description: 'Launch a new Chrome instance with remote debugging enabled. Automatically connects after startup.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -661,7 +467,7 @@ const legacyTools = [
     { name: 'chrome_disconnect', ...toolMetadata.connection.chromeDisconnect },
     {
         name: 'list_targets',
-        description: 'List all targets (pages, workers, service workers) for a connection. Shows which target is currently active.',
+        description: 'List all targets (pages, workers, service workers) for a connection. Shows which target is currently active.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -674,7 +480,7 @@ const legacyTools = [
     },
     {
         name: 'switch_target',
-        description: 'Switch to a different target (page) within the current connection. Can switch by index, title pattern, or URL pattern.',
+        description: 'Switch to a different target (page) within the current connection. Can switch by index, title pattern, or URL pattern.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -709,7 +515,7 @@ const legacyTools = [
     // Debugger Tools
     {
         name: 'debugger_enable',
-        description: 'Enable the JavaScript debugger. Must be called before any other debugger operations.',
+        description: 'Enable the JavaScript debugger. Must be called before any other debugger operations.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -722,7 +528,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_set_breakpoint',
-        description: 'Set a breakpoint at a specific line in a source file. Debugger must be enabled first.',
+        description: 'Set a breakpoint at a specific line in a source file. Debugger must be enabled first.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -753,7 +559,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_get_call_stack',
-        description: 'Get the current call stack when execution is paused. Only works when paused at a breakpoint.',
+        description: 'Get the current call stack when execution is paused. Only works when paused at a breakpoint.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -766,7 +572,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_evaluate_on_call_frame',
-        description: 'Evaluate a JavaScript expression in the context of a specific call frame. Only works when paused.',
+        description: 'Evaluate a JavaScript expression in the context of a specific call frame. Only works when paused.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -788,7 +594,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_step_over',
-        description: 'Step over the current line (execute and pause at next line). Only works when paused.',
+        description: 'Step over the current line (execute and pause at next line). Only works when paused.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -801,7 +607,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_step_into',
-        description: 'Step into the current function call. Only works when paused at a function call.',
+        description: 'Step into the current function call. Only works when paused at a function call.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -814,7 +620,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_step_out',
-        description: 'Step out of the current function (continue until function returns). Only works when paused.',
+        description: 'Step out of the current function (continue until function returns). Only works when paused.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -827,7 +633,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_resume',
-        description: 'Resume execution after being paused. Will continue until next breakpoint or exception.',
+        description: 'Resume execution after being paused. Will continue until next breakpoint or exception.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -840,7 +646,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_pause',
-        description: 'Pause JavaScript execution as soon as possible. Use debugger_get_call_stack() after pausing.',
+        description: 'Pause JavaScript execution as soon as possible. Use debugger_get_call_stack() after pausing.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -853,7 +659,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_remove_breakpoint',
-        description: 'Remove a previously set breakpoint.',
+        description: 'Remove a previously set breakpoint.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -871,7 +677,7 @@ const legacyTools = [
     },
     {
         name: 'debugger_set_pause_on_exceptions',
-        description: 'Configure whether to pause when exceptions are thrown.',
+        description: 'Configure whether to pause when exceptions are thrown.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -896,7 +702,7 @@ const smartTools = [
     // Chrome Connection Management (consolidated)
     {
         name: 'connect',
-        description: 'Connect to Chrome and navigate to a URL. If port is provided, connects to existing Chrome on that port (verifies something is running first). If port is omitted, launches a new Chrome instance on a random port (15000-18000). Always navigates to the URL and returns page context.',
+        description: 'Connect to Chrome and navigate to a URL. If port is provided, connects to existing Chrome on that port (verifies something is running first). If port is omitted, launches a new Chrome instance on a random port (15000-18000). Always navigates to the URL and returns page context.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -936,7 +742,7 @@ const smartTools = [
     { name: 'chrome_disconnect', ...toolMetadata.connection.chromeDisconnect },
     {
         name: 'target',
-        description: 'List or switch browser targets (pages, workers). Consolidates list_targets and switch_target into a single action-based tool.',
+        description: 'List or switch browser targets (pages, workers). Consolidates list_targets and switch_target into a single action-based tool.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -976,7 +782,7 @@ const smartTools = [
     // Debugger Tools (consolidated)
     {
         name: 'enable_debug_tools',
-        description: 'Enable JavaScript debugger and unlock debugging tools. Must be called before setting breakpoints or stepping.',
+        description: 'Enable JavaScript debugger and unlock debugging tools. Must be called before setting breakpoints or stepping.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -989,7 +795,7 @@ const smartTools = [
     },
     {
         name: 'breakpoint',
-        description: 'Set or remove breakpoints. Consolidates debugger_set_breakpoint and debugger_remove_breakpoint into a single action-based tool.',
+        description: 'Set or remove breakpoints. Consolidates debugger_set_breakpoint and debugger_remove_breakpoint into a single action-based tool.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -1029,7 +835,7 @@ const smartTools = [
     },
     {
         name: 'step',
-        description: 'Step through code execution. Consolidates debugger_step_over, debugger_step_into, and debugger_step_out into a single direction-based tool.',
+        description: 'Step through code execution. Consolidates debugger_step_over, debugger_step_into, and debugger_step_out into a single direction-based tool.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -1053,7 +859,7 @@ const smartTools = [
     },
     {
         name: 'execution',
-        description: 'Control execution flow. Consolidates debugger_resume and debugger_pause into a single action-based tool.',
+        description: 'Control execution flow. Consolidates debugger_resume and debugger_pause into a single action-based tool.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -1077,7 +883,7 @@ const smartTools = [
     },
     {
         name: 'call_stack',
-        description: 'Get the current call stack when execution is paused. Only works when paused at a breakpoint.',
+        description: 'Get the current call stack when execution is paused. Only works when paused at a breakpoint.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -1090,7 +896,7 @@ const smartTools = [
     },
     {
         name: 'evaluate',
-        description: 'Evaluate a JavaScript expression in the context of a specific call frame. Only works when paused.',
+        description: 'Evaluate a JavaScript expression in the context of a specific call frame. Only works when paused.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -1112,7 +918,7 @@ const smartTools = [
     },
     {
         name: 'pause_on_exceptions',
-        description: 'Configure whether to pause when exceptions are thrown.',
+        description: 'Configure whether to pause when exceptions are thrown.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {

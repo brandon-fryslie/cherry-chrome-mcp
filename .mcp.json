@@ -3,7 +3,7 @@
     "cherry-chrome": {
       "command": "node",
       "args": [
-        "/Users/bmf/code/cherry-chrome-mcp/build/src/index.js"
+        "${CLAUDE_PLUGIN_ROOT}/build/src/index.js"
       ]
     },
     "chromedevtools/chrome-devtools-mcp": {
