@@ -121,6 +121,18 @@ export async function connect(args: {
   user_data_dir?: string;
   extra_args?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  // [LAW:verifiable-goals] Validate required input at the trust boundary.
+  // Without this, a missing/misnamed url flows into page.goto() and surfaces
+  // as an opaque CDP "Failed to deserialize params.url" error.
+  if (typeof args.url !== 'string' || args.url.trim() === '') {
+    return errorResponse(
+      `connect requires a non-empty 'url' parameter.\n\n` +
+      `Received: ${JSON.stringify(args.url)}\n\n` +
+      `The correct parameter name is 'url' (not 'initialUrl' or similar).\n` +
+      `Example: connect({ url: 'https://example.com' })`
+    );
+  }
+
   const connectionId = args.connection_id ?? 'default';
   const headless = args.headless ?? true;
 
@@ -165,9 +177,12 @@ export async function connect(args: {
     if (!portInUse) {
       return errorResponse(
         `Nothing is running on port ${port}.\n\n` +
-        `To connect to an existing Chrome instance, first start Chrome with:\n` +
-        `  chrome --remote-debugging-port=${port}\n\n` +
-        `Or omit the port parameter to launch a new Chrome instance automatically.`
+        `RECOMMENDED NEXT STEP — launch a fresh Chrome automatically:\n` +
+        `  connect({ url: "${args.url}" })    // omit the port entirely\n\n` +
+        `Only use a manual port if you specifically need to attach to an existing Chrome.\n` +
+        `To do that, start Chrome yourself first with:\n` +
+        `  chrome --remote-debugging-port=${port}\n` +
+        `then call: connect({ url: "${args.url}", port: ${port} })`
       );
     }
 
@@ -334,7 +349,11 @@ export async function chromeListConnections(): Promise<{
 
   if (connections.size === 0) {
     return successResponse(
-      'No active Chrome connections.\n\nUse chrome_connect() or chrome_launch() to create a connection.'
+      `No active Chrome connections.\n\n` +
+      `NEXT STEP — call this exact tool to start:\n` +
+      `  connect({ url: "https://the-url-you-want.com" })\n\n` +
+      `That single call launches a fresh Chrome and navigates. No manual setup needed. ` +
+      `The required parameter is exactly "url" (not "initialUrl").`
     );
   }
 

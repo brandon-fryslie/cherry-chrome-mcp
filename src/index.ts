@@ -744,13 +744,19 @@ const smartTools: Tool[] = [
   {
     name: 'connect',
     description:
-      'Connect to Chrome and navigate to a URL. If port is provided, connects to existing Chrome on that port (verifies something is running first). If port is omitted, launches a new Chrome instance on a random port (15000-18000). Always navigates to the URL and returns page context.' + SKILL_REF,
+      'START HERE for all cherry-chrome workflows. Opens Chrome and navigates to a URL in a single call. ' +
+      'CANONICAL HAPPY PATH (use this 99% of the time): connect({ url: "https://example.com" }) — this launches a ' +
+      'fresh headless Chrome on a random port and navigates. No manual Chrome startup required. ' +
+      'The ONLY required parameter is "url" (not "initialUrl", not "href"). ' +
+      'Optional: pass port to attach to an already-running Chrome (verifies the port first); pass connection_id to run ' +
+      'multiple Chrome instances side-by-side; pass headless:false to see the browser window. ' +
+      'On any failure this tool returns a message naming the exact next call to try — follow it, do not improvise.' + SKILL_REF,
     inputSchema: {
       type: 'object',
       properties: {
         url: {
           type: 'string',
-          description: 'URL to navigate to after connecting',
+          description: 'REQUIRED. Full URL to navigate to (e.g. "https://example.com"). The parameter name is exactly "url".',
         },
         port: {
           type: 'number',

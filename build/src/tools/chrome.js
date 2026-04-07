@@ -86,6 +86,15 @@ export async function chromeLaunch(args) {
  * This replaces both chrome_connect and chrome_launch with unified, smarter behavior.
  */
 export async function connect(args) {
+    // [LAW:verifiable-goals] Validate required input at the trust boundary.
+    // Without this, a missing/misnamed url flows into page.goto() and surfaces
+    // as an opaque CDP "Failed to deserialize params.url" error.
+    if (typeof args.url !== 'string' || args.url.trim() === '') {
+        return errorResponse(`connect requires a non-empty 'url' parameter.\n\n` +
+            `Received: ${JSON.stringify(args.url)}\n\n` +
+            `The correct parameter name is 'url' (not 'initialUrl' or similar).\n` +
+            `Example: connect({ url: 'https://example.com' })`);
+    }
     const connectionId = args.connection_id ?? 'default';
     const headless = args.headless ?? true;
     // Check if connection already exists - if so, reuse it
