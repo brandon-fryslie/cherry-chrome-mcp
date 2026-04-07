@@ -3,42 +3,7 @@
  * Ported from Python chrome_connect, chrome_launch, etc.
  */
 /**
- * Connect to a Chrome instance running with remote debugging enabled.
- *
- * Chrome must be launched with --remote-debugging-port flag.
- * You can connect to multiple Chrome instances by specifying different connection_ids.
- */
-export declare function chromeConnect(args: {
-    port?: number;
-    connection_id?: string;
-    host?: string;
-}): Promise<{
-    content: Array<{
-        type: 'text';
-        text: string;
-    }>;
-    isError?: boolean;
-}>;
-/**
- * Launch a new Chrome instance with remote debugging enabled.
- *
- * Automatically connects to the launched instance after startup.
- */
-export declare function chromeLaunch(args: {
-    debug_port?: number;
-    headless?: boolean;
-    user_data_dir?: string;
-    extra_args?: string;
-    connection_id?: string;
-}): Promise<{
-    content: Array<{
-        type: 'text';
-        text: string;
-    }>;
-    isError?: boolean;
-}>;
-/**
- * CONSOLIDATED: connect - Smart Chrome connection
+ * connect - Smart Chrome connection
  *
  * Behavior depends on whether port is provided:
  * - If port IS provided: verify something is running on that port and connect to it
@@ -50,27 +15,6 @@ export declare function chromeLaunch(args: {
 export declare function connect(args: {
     url: string;
     port?: number;
-    connection_id?: string;
-    headless?: boolean;
-    user_data_dir?: string;
-    extra_args?: string;
-}): Promise<{
-    content: Array<{
-        type: 'text';
-        text: string;
-    }>;
-    isError?: boolean;
-}>;
-/**
- * LEGACY: chrome - Connect or launch Chrome (action-based)
- *
- * This is the old action-based tool. Kept for backward compatibility
- * but the new `connect` tool is preferred.
- */
-export declare function chrome(args: {
-    action: 'connect' | 'launch';
-    port?: number;
-    host?: string;
     connection_id?: string;
     headless?: boolean;
     user_data_dir?: string;
@@ -154,9 +98,9 @@ export declare function switchTarget(args: {
     isError?: boolean;
 }>;
 /**
- * CONSOLIDATED: target - List or switch targets (pages)
+ * target - List or switch browser targets (pages).
  *
- * Replaces list_targets and switch_target with a single tool.
+ * action: "list" shows all targets; "switch" switches by index/title/url.
  */
 export declare function target(args: {
     action: 'list' | 'switch';

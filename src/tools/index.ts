@@ -2,20 +2,13 @@
  * Tool exports and registration
  */
 
-// Chrome connection tools (original exports for backward compatibility)
+// Chrome connection tools
 export {
-  chromeConnect,
-  chromeLaunch,
   chromeListConnections,
   chromeSwitchConnection,
   chromeDisconnect,
   listTargets,
   switchTarget,
-} from './chrome.js';
-
-// New consolidated chrome tools
-export {
-  chrome,
   connect,
   target,
   enableDebugTools,
@@ -63,22 +56,7 @@ export {
   inspectElement,
 } from './inspect.js';
 
-// Debugger tools (original exports for backward compatibility)
-export {
-  debuggerEnable,
-  debuggerSetBreakpoint,
-  debuggerGetCallStack,
-  debuggerEvaluateOnCallFrame,
-  debuggerStepOver,
-  debuggerStepInto,
-  debuggerStepOut,
-  debuggerResume,
-  debuggerPause,
-  debuggerRemoveBreakpoint,
-  debuggerSetPauseOnExceptions,
-} from './debugger.js';
-
-// New consolidated debugger tools
+// Debugger tools
 export {
   step,
   execution,

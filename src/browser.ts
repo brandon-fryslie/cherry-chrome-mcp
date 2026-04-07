@@ -519,7 +519,7 @@ export class BrowserManager {
     if (!connection) {
       const id = connectionId || 'active';
       throw new Error(
-        `No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`
+        `No Chrome connection '${id}' found. Call connect({ url: "..." }) first.`
       );
     }
 

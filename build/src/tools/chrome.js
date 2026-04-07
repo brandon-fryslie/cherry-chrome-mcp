@@ -35,48 +35,7 @@ async function isPortInUse(port, host = 'localhost') {
     });
 }
 /**
- * Connect to a Chrome instance running with remote debugging enabled.
- *
- * Chrome must be launched with --remote-debugging-port flag.
- * You can connect to multiple Chrome instances by specifying different connection_ids.
- */
-export async function chromeConnect(args) {
-    const port = args.port ?? 9222;
-    const connectionId = args.connection_id ?? 'default';
-    const host = args.host ?? 'localhost';
-    console.error(`[cherry-chrome] Connecting to ${host}:${port} as '${connectionId}'...`);
-    try {
-        const result = await browserManager.connect(connectionId, host, port);
-        console.error(`[cherry-chrome] Connection result: ${result}`);
-        return successResponse(result || `Connected to Chrome at ${host}:${port} (ID: ${connectionId})`);
-    }
-    catch (error) {
-        console.error(`[cherry-chrome] Connection failed: ${error}`);
-        return errorResponse(`Error connecting to Chrome: ${error}\n\nMake sure Chrome is running with:\nchrome --remote-debugging-port=${port}`);
-    }
-}
-/**
- * Launch a new Chrome instance with remote debugging enabled.
- *
- * Automatically connects to the launched instance after startup.
- */
-export async function chromeLaunch(args) {
-    const debugPort = args.debug_port ?? 9222;
-    const headless = args.headless ?? false;
-    const userDataDir = args.user_data_dir;
-    const extraArgs = args.extra_args;
-    const connectionId = args.connection_id ?? 'auto';
-    try {
-        // Fix: browserManager.launch signature is (debugPort, connectionId?, headless?, userDataDir?, extraArgs?)
-        const result = await browserManager.launch(debugPort, connectionId, headless, userDataDir, extraArgs);
-        return successResponse(result);
-    }
-    catch (error) {
-        return errorResponse(`Error launching Chrome: ${error}`);
-    }
-}
-/**
- * CONSOLIDATED: connect - Smart Chrome connection
+ * connect - Smart Chrome connection
  *
  * Behavior depends on whether port is provided:
  * - If port IS provided: verify something is running on that port and connect to it
@@ -128,9 +87,12 @@ export async function connect(args) {
         const portInUse = await isPortInUse(port, host);
         if (!portInUse) {
             return errorResponse(`Nothing is running on port ${port}.\n\n` +
-                `To connect to an existing Chrome instance, first start Chrome with:\n` +
-                `  chrome --remote-debugging-port=${port}\n\n` +
-                `Or omit the port parameter to launch a new Chrome instance automatically.`);
+                `RECOMMENDED NEXT STEP — launch a fresh Chrome automatically:\n` +
+                `  connect({ url: "${args.url}" })    // omit the port entirely\n\n` +
+                `Only use a manual port if you specifically need to attach to an existing Chrome.\n` +
+                `To do that, start Chrome yourself first with:\n` +
+                `  chrome --remote-debugging-port=${port}\n` +
+                `then call: connect({ url: "${args.url}", port: ${port} })`);
         }
         console.error(`[cherry-chrome] Port ${port} is in use, attempting to connect...`);
         try {
@@ -217,33 +179,6 @@ export async function connect(args) {
     }
 }
 /**
- * LEGACY: chrome - Connect or launch Chrome (action-based)
- *
- * This is the old action-based tool. Kept for backward compatibility
- * but the new `connect` tool is preferred.
- */
-export async function chrome(args) {
-    if (args.action === 'connect') {
-        return chromeConnect({
-            port: args.port,
-            connection_id: args.connection_id,
-            host: args.host,
-        });
-    }
-    else if (args.action === 'launch') {
-        return chromeLaunch({
-            debug_port: args.port,
-            headless: args.headless,
-            user_data_dir: args.user_data_dir,
-            extra_args: args.extra_args,
-            connection_id: args.connection_id,
-        });
-    }
-    else {
-        return errorResponse(`Invalid action: ${args.action}. Must be 'connect' or 'launch'.`);
-    }
-}
-/**
  * List all active Chrome connections.
  *
  * Shows connection ID, WebSocket URL, active status, and paused state for each connection.
@@ -252,7 +187,11 @@ export async function chromeListConnections() {
     // Fix: use getConnectionsStatus() instead of listConnections()
     const connections = await browserManager.getConnectionsStatus();
     if (connections.size === 0) {
-        return successResponse('No active Chrome connections.\n\nUse chrome_connect() or chrome_launch() to create a connection.');
+        return successResponse(`No active Chrome connections.\n\n` +
+            `NEXT STEP — call this exact tool to start:\n` +
+            `  connect({ url: "https://the-url-you-want.com" })\n\n` +
+            `That single call launches a fresh Chrome and navigates. No manual setup needed. ` +
+            `The required parameter is exactly "url" (not "initialUrl").`);
     }
     const lines = ['Chrome Connections:', '='.repeat(80), ''];
     for (const [connId, info] of connections) {
@@ -310,7 +249,7 @@ export async function listTargets(args) {
         const connection = browserManager.getConnection(args.connection_id);
         if (!connection) {
             const id = args.connection_id || 'active';
-            return errorResponse(`No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`);
+            return errorResponse(`No Chrome connection '${id}' found. Call connect({ url: "..." }) first.`);
         }
         // Get the debug port from the WebSocket URL
         const wsUrl = connection.wsUrl;
@@ -361,7 +300,7 @@ export async function switchTarget(args) {
         const connection = browserManager.getConnection(args.connection_id);
         if (!connection) {
             const id = args.connection_id || 'active';
-            return errorResponse(`No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`);
+            return errorResponse(`No Chrome connection '${id}' found. Call connect({ url: "..." }) first.`);
         }
         // Get the debug port from the WebSocket URL
         const wsUrl = connection.wsUrl;
@@ -421,9 +360,9 @@ export async function switchTarget(args) {
     }
 }
 /**
- * CONSOLIDATED: target - List or switch targets (pages)
+ * target - List or switch browser targets (pages).
  *
- * Replaces list_targets and switch_target with a single tool.
+ * action: "list" shows all targets; "switch" switches by index/title/url.
  */
 export async function target(args) {
     if (args.action === 'list') {

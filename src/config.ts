@@ -25,23 +25,3 @@ export const CDP_TIMEOUT = 10_000;
  * Wait time after launching Chrome before connecting (ms).
  */
 export const CHROME_LAUNCH_WAIT = 2000;
-
-/**
- * Feature toggle: Use legacy granular tools instead of smart consolidated tools.
- *
- * When false (default): Uses new consolidated smart tools
- *   - chrome (replaces chrome_connect, chrome_launch)
- *   - target (replaces list_targets, switch_target)
- *   - step (replaces debugger_step_over, debugger_step_into, debugger_step_out)
- *   - execution (replaces debugger_resume, debugger_pause)
- *   - breakpoint (replaces debugger_set_breakpoint, debugger_remove_breakpoint)
- *   - enable_debug_tools (replaces debugger_enable with semantic intent)
- *   - call_stack, evaluate, pause_on_exceptions (renamed for consistency)
- *
- * When true: Uses original granular tools for backward compatibility
- *   - chrome_connect, chrome_launch, chrome_disconnect, etc.
- *   - debugger_enable, debugger_step_over, debugger_step_into, etc.
- *
- * Set via environment variable: USE_LEGACY_TOOLS=true
- */
-export const USE_LEGACY_TOOLS = process.env.USE_LEGACY_TOOLS === 'true' || process.env.USE_LEGACY_TOOLS === '1';

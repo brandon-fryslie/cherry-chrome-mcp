@@ -5,23 +5,20 @@
  * Separate from server setup for maintainability.
  *
  * Architecture:
- * - Imports all tool functions from ./tools/
- * - Creates Map<string, ToolHandler> based on feature toggle
- * - Handles both legacy (24 tools) and smart (18 tools) modes
+ * - Imports tool functions from ./tools/
+ * - Creates Map<string, ToolHandler> with one entry per registered tool
+ * - Single flat registration — no mode branching
  */
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolHandler } from './toolRegistry.js';
 /**
- * Create tool handlers based on feature toggle.
+ * Create tool handlers for the MCP server.
  *
- * Phase 2: Handler Mappings
- * - Creates Map of tool name → ToolHandler
- * - Preserves type casting pattern from original switch statements
- * - Shared tools (6 DOM + 3 connection = 9 total) present in both modes
- * - Legacy mode: 24 handlers (9 shared + 15 legacy-specific)
- * - Smart mode: 18 handlers (9 shared + 9 smart-specific)
+ * Creates a Map<string, ToolHandler> with one entry per tool in `tools`.
+ * Every tool listed in the tool array must have a handler registered here;
+ * the registry validates this at initialization (fail-fast).
  *
- * Type Safety: Each handler casts args using Parameters<typeof toolFn>[0]
+ * Type Safety: Each handler casts args using Parameters<typeof toolFn>[0].
  */
-export declare function createToolHandlers(useLegacy: boolean, legacyTools: Tool[], smartTools: Tool[]): Map<string, ToolHandler>;
+export declare function createToolHandlers(tools: Tool[]): Map<string, ToolHandler>;
 //# sourceMappingURL=handlers.d.ts.map

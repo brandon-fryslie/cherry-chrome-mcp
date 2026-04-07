@@ -422,7 +422,7 @@ export class BrowserManager {
         const connection = this.getConnection(connectionId);
         if (!connection) {
             const id = connectionId || 'active';
-            throw new Error(`No Chrome connection '${id}' found. Use chrome_connect() or chrome_launch() first.`);
+            throw new Error(`No Chrome connection '${id}' found. Call connect({ url: "..." }) first.`);
         }
         // Create CDP session if not exists
         if (!connection.cdpSession) {

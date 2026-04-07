@@ -4,68 +4,24 @@ describe('Cherry Chrome MCP Server', () => {
     it('should pass basic sanity check', () => {
         assert.ok(true, 'Basic test passes');
     });
-    it('should have all 24 legacy tools defined', () => {
-        // Chrome Connection Tools (5)
-        const chromeTools = [
-            'chrome_connect',
-            'chrome_launch',
-            'chrome_list_connections',
-            'chrome_switch_connection',
-            'chrome_disconnect',
-        ];
-        // DOM Tools (8)
-        const domTools = [
-            'query_elements',
-            'click_element',
-            'fill_element',
-            'navigate',
-            'get_console_logs',
-            'inspect_element',
-            'scroll',
-            'get_page_text',
-        ];
-        // Debugger Tools (11)
-        const debuggerTools = [
-            'debugger_enable',
-            'debugger_set_breakpoint',
-            'debugger_get_call_stack',
-            'debugger_evaluate_on_call_frame',
-            'debugger_step_over',
-            'debugger_step_into',
-            'debugger_step_out',
-            'debugger_resume',
-            'debugger_pause',
-            'debugger_remove_breakpoint',
-            'debugger_set_pause_on_exceptions',
-        ];
-        const expectedTools = [...chromeTools, ...domTools, ...debuggerTools];
-        assert.strictEqual(expectedTools.length, 24, 'Should have 24 legacy tools total (5 chrome + 8 dom + 11 debugger)');
-        // Verify categories
-        assert.strictEqual(chromeTools.length, 5, 'Should have 5 Chrome connection tools');
-        assert.strictEqual(domTools.length, 8, 'Should have 8 DOM tools');
-        assert.strictEqual(debuggerTools.length, 11, 'Should have 11 debugger tools');
-    });
-    it('should have all 19 smart mode tools defined', () => {
-        // Chrome Connection Tools (4)
-        const chromeTools = [
+    it('should have the expected 19 tools registered', () => {
+        // Connection (5), DOM (7), Debugger (7) = 19
+        const connectionTools = [
             'connect',
             'chrome_list_connections',
             'chrome_switch_connection',
             'chrome_disconnect',
+            'target',
         ];
-        // Connection Navigation (1)
-        const navigationTools = ['target'];
-        // DOM Tools (6)
         const domTools = [
             'query_elements',
-            'interact', // consolidated click_element + scroll
+            'interact',
             'fill_element',
             'navigate',
             'get_console_logs',
             'inspect_element',
             'get_page_text',
         ];
-        // Debugger Tools (7)
         const debuggerTools = [
             'enable_debug_tools',
             'breakpoint',
@@ -75,27 +31,28 @@ describe('Cherry Chrome MCP Server', () => {
             'evaluate',
             'pause_on_exceptions',
         ];
-        const expectedTools = [...chromeTools, ...navigationTools, ...domTools, ...debuggerTools];
-        assert.strictEqual(expectedTools.length, 19, 'Should have 19 smart mode tools total (4 chrome + 1 navigation + 7 dom + 7 debugger)');
-        // Verify categories
-        assert.strictEqual(chromeTools.length, 4, 'Should have 4 Chrome connection tools');
-        assert.strictEqual(navigationTools.length, 1, 'Should have 1 navigation tool');
+        const expectedTools = [...connectionTools, ...domTools, ...debuggerTools];
+        assert.strictEqual(expectedTools.length, 19, 'Should have 19 tools total');
+        assert.strictEqual(connectionTools.length, 5, 'Should have 5 connection tools');
         assert.strictEqual(domTools.length, 7, 'Should have 7 DOM tools');
         assert.strictEqual(debuggerTools.length, 7, 'Should have 7 debugger tools');
+        // No duplicates
+        assert.strictEqual(new Set(expectedTools).size, expectedTools.length);
     });
     it('should have correct config values', async () => {
         const { MAX_RESULT_SIZE } = await import('../src/config.js');
         assert.strictEqual(MAX_RESULT_SIZE, 5000, 'MAX_RESULT_SIZE should be 5000');
     });
+    it('should not export USE_LEGACY_TOOLS anymore', async () => {
+        const configModule = await import('../src/config.js');
+        assert.strictEqual(configModule.USE_LEGACY_TOOLS, undefined, 'USE_LEGACY_TOOLS flag should be fully removed');
+    });
     it('should have response utilities', async () => {
         const { checkResultSize, analyzeQueryElementsData, escapeForJs } = await import('../src/response.js');
-        // Test escapeForJs
         assert.strictEqual(escapeForJs("test'string"), "test\\'string", 'Should escape single quotes');
         assert.strictEqual(escapeForJs("line\nbreak"), 'line\\nbreak', 'Should escape newlines');
-        // Test checkResultSize with small result
         const smallResult = 'Hello world';
         assert.strictEqual(checkResultSize(smallResult), smallResult, 'Small result should pass through unchanged');
-        // Test checkResultSize with large result
         const largeResult = 'x'.repeat(6000);
         const checked = checkResultSize(largeResult);
         assert.ok(checked.includes('Result too large'), 'Large result should be rejected with error message');

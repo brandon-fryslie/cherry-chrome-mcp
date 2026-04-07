@@ -8,7 +8,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
-import { USE_LEGACY_TOOLS } from './config.js';
 import { createToolRegistry } from './toolRegistry.js';
 import { createToolHandlers } from './handlers.js';
 const server = new Server({
@@ -52,33 +51,6 @@ const toolMetadata = {
                     connection_id: {
                         type: 'string',
                         description: 'Chrome connection to use (uses active if not specified)',
-                    },
-                },
-                required: ['selector'],
-            },
-        },
-        clickElement: {
-            description: 'Click an element matching the CSS selector. Use query_elements first to verify the element exists.' + SKILL_REF,
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    selector: {
-                        type: 'string',
-                        description: 'CSS selector for the element',
-                    },
-                    index: {
-                        type: 'number',
-                        description: 'Which matching element to click (0 = first)',
-                        default: 0,
-                    },
-                    include_context: {
-                        type: 'boolean',
-                        description: 'Include element state after click (default: true)',
-                        default: true,
-                    },
-                    connection_id: {
-                        type: 'string',
-                        description: 'Chrome connection to use',
                     },
                 },
                 required: ['selector'],
@@ -306,32 +278,6 @@ const toolMetadata = {
                 },
             },
         },
-        scroll: {
-            description: 'Scroll the page. Use direction for relative scrolling, or selector to scroll to a specific element. Essential for reading content at the bottom of long pages.' + SKILL_REF,
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    direction: {
-                        type: 'string',
-                        description: 'Scroll direction: "top", "bottom", "up", "down"',
-                        enum: ['top', 'bottom', 'up', 'down'],
-                    },
-                    selector: {
-                        type: 'string',
-                        description: 'CSS selector of element to scroll into view (overrides direction)',
-                    },
-                    pixels: {
-                        type: 'number',
-                        description: 'Pixels to scroll for up/down (default: 500)',
-                        default: 500,
-                    },
-                    connection_id: {
-                        type: 'string',
-                        description: 'Chrome connection to use',
-                    },
-                },
-            },
-        },
         getPageText: {
             description: 'Get text content from elements matching a selector. Returns just text without HTML structure. Use from_end=true to get the last N matches (useful for recent messages in conversations).' + SKILL_REF,
             inputSchema: {
@@ -401,314 +347,27 @@ const toolMetadata = {
     },
 };
 /**
- * Legacy tool definitions (backward compatible)
+ * Tool definitions registered with the MCP server.
+ * Every entry here must have a corresponding handler in createToolHandlers;
+ * the registry validates this at initialization.
  */
-const legacyTools = [
+const tools = [
     // Chrome Connection Management
     {
-        name: 'chrome_connect',
-        description: 'Connect to a Chrome instance running with remote debugging enabled. Chrome must be launched with --remote-debugging-port flag.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                port: {
-                    type: 'number',
-                    description: 'Chrome remote debugging port',
-                    default: 9222,
-                },
-                connection_id: {
-                    type: 'string',
-                    description: 'Unique identifier for this connection',
-                    default: 'default',
-                },
-                host: {
-                    type: 'string',
-                    description: 'Chrome host',
-                    default: 'localhost',
-                },
-            },
-        },
-    },
-    {
-        name: 'chrome_launch',
-        description: 'Launch a new Chrome instance with remote debugging enabled. Automatically connects after startup.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                debug_port: {
-                    type: 'number',
-                    description: 'Remote debugging port',
-                    default: 9222,
-                },
-                headless: {
-                    type: 'boolean',
-                    description: 'Run in headless mode',
-                    default: false,
-                },
-                user_data_dir: {
-                    type: 'string',
-                    description: 'Custom user data directory path',
-                },
-                extra_args: {
-                    type: 'string',
-                    description: 'Additional Chrome flags as space-separated string (e.g., "--disable-gpu --window-size=1920,1080")',
-                },
-                connection_id: {
-                    type: 'string',
-                    description: 'Connection ID for this instance (default: auto-generate from port)',
-                    default: 'auto',
-                },
-            },
-        },
-    },
-    // Connection tools (from shared metadata)
-    { name: 'chrome_list_connections', ...toolMetadata.connection.chromeListConnections },
-    { name: 'chrome_switch_connection', ...toolMetadata.connection.chromeSwitchConnection },
-    { name: 'chrome_disconnect', ...toolMetadata.connection.chromeDisconnect },
-    {
-        name: 'list_targets',
-        description: 'List all targets (pages, workers, service workers) for a connection. Shows which target is currently active.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use (uses active if not specified)',
-                },
-            },
-        },
-    },
-    {
-        name: 'switch_target',
-        description: 'Switch to a different target (page) within the current connection. Can switch by index, title pattern, or URL pattern.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                index: {
-                    type: 'number',
-                    description: 'Target index from list_targets (e.g., 0 for first target)',
-                },
-                title: {
-                    type: 'string',
-                    description: 'Partial title match (e.g., "GitKraken Desktop")',
-                },
-                url: {
-                    type: 'string',
-                    description: 'URL pattern with * wildcards (e.g., "*index.html*")',
-                },
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use (uses active if not specified)',
-                },
-            },
-        },
-    },
-    // DOM Tools (from shared metadata)
-    { name: 'query_elements', ...toolMetadata.dom.queryElements },
-    { name: 'click_element', ...toolMetadata.dom.clickElement },
-    { name: 'fill_element', ...toolMetadata.dom.fillElement },
-    { name: 'navigate', ...toolMetadata.dom.navigate },
-    { name: 'get_console_logs', ...toolMetadata.dom.getConsoleLogs },
-    { name: 'inspect_element', ...toolMetadata.dom.inspectElement },
-    { name: 'scroll', ...toolMetadata.dom.scroll },
-    { name: 'get_page_text', ...toolMetadata.dom.getPageText },
-    // Debugger Tools
-    {
-        name: 'debugger_enable',
-        description: 'Enable the JavaScript debugger. Must be called before any other debugger operations.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-        },
-    },
-    {
-        name: 'debugger_set_breakpoint',
-        description: 'Set a breakpoint at a specific line in a source file. Debugger must be enabled first.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                url: {
-                    type: 'string',
-                    description: 'Full URL or path of the script (e.g., "http://localhost:3000/main.js")',
-                },
-                line_number: {
-                    type: 'number',
-                    description: 'Line number to break on (1-indexed)',
-                },
-                column_number: {
-                    type: 'number',
-                    description: 'Column number (0-indexed)',
-                    default: 0,
-                },
-                condition: {
-                    type: 'string',
-                    description: 'Optional conditional expression (breakpoint only triggers if true)',
-                },
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-            required: ['url', 'line_number'],
-        },
-    },
-    {
-        name: 'debugger_get_call_stack',
-        description: 'Get the current call stack when execution is paused. Only works when paused at a breakpoint.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-        },
-    },
-    {
-        name: 'debugger_evaluate_on_call_frame',
-        description: 'Evaluate a JavaScript expression in the context of a specific call frame. Only works when paused.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                call_frame_id: {
-                    type: 'string',
-                    description: 'Call frame ID from debugger_get_call_stack()',
-                },
-                expression: {
-                    type: 'string',
-                    description: 'JavaScript expression to evaluate',
-                },
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-            required: ['call_frame_id', 'expression'],
-        },
-    },
-    {
-        name: 'debugger_step_over',
-        description: 'Step over the current line (execute and pause at next line). Only works when paused.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-        },
-    },
-    {
-        name: 'debugger_step_into',
-        description: 'Step into the current function call. Only works when paused at a function call.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-        },
-    },
-    {
-        name: 'debugger_step_out',
-        description: 'Step out of the current function (continue until function returns). Only works when paused.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-        },
-    },
-    {
-        name: 'debugger_resume',
-        description: 'Resume execution after being paused. Will continue until next breakpoint or exception.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-        },
-    },
-    {
-        name: 'debugger_pause',
-        description: 'Pause JavaScript execution as soon as possible. Use debugger_get_call_stack() after pausing.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-        },
-    },
-    {
-        name: 'debugger_remove_breakpoint',
-        description: 'Remove a previously set breakpoint.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                breakpoint_id: {
-                    type: 'string',
-                    description: 'Breakpoint ID returned from debugger_set_breakpoint()',
-                },
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-            required: ['breakpoint_id'],
-        },
-    },
-    {
-        name: 'debugger_set_pause_on_exceptions',
-        description: 'Configure whether to pause when exceptions are thrown.' + SKILL_REF,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                state: {
-                    type: 'string',
-                    description: '"none" (no pause), "uncaught" (only uncaught), or "all" (all exceptions)',
-                    enum: ['none', 'uncaught', 'all'],
-                },
-                connection_id: {
-                    type: 'string',
-                    description: 'Chrome connection to use',
-                },
-            },
-            required: ['state'],
-        },
-    },
-];
-/**
- * Smart consolidated tool definitions (new approach)
- */
-const smartTools = [
-    // Chrome Connection Management (consolidated)
-    {
         name: 'connect',
-        description: 'Connect to Chrome and navigate to a URL. If port is provided, connects to existing Chrome on that port (verifies something is running first). If port is omitted, launches a new Chrome instance on a random port (15000-18000). Always navigates to the URL and returns page context.' + SKILL_REF,
+        description: 'START HERE for all cherry-chrome workflows. Opens Chrome and navigates to a URL in a single call. ' +
+            'CANONICAL HAPPY PATH (use this 99% of the time): connect({ url: "https://example.com" }) — this launches a ' +
+            'fresh headless Chrome on a random port and navigates. No manual Chrome startup required. ' +
+            'The ONLY required parameter is "url" (not "initialUrl", not "href"). ' +
+            'Optional: pass port to attach to an already-running Chrome (verifies the port first); pass connection_id to run ' +
+            'multiple Chrome instances side-by-side; pass headless:false to see the browser window. ' +
+            'On any failure this tool returns a message naming the exact next call to try — follow it, do not improvise.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
                 url: {
                     type: 'string',
-                    description: 'URL to navigate to after connecting',
+                    description: 'REQUIRED. Full URL to navigate to (e.g. "https://example.com"). The parameter name is exactly "url".',
                 },
                 port: {
                     type: 'number',
@@ -835,7 +494,7 @@ const smartTools = [
     },
     {
         name: 'step',
-        description: 'Step through code execution. Consolidates debugger_step_over, debugger_step_into, and debugger_step_out into a single direction-based tool.' + SKILL_REF,
+        description: 'Step through code execution one statement at a time. Pick direction: "over" (next line), "into" (enter function), or "out" (exit function).' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -859,7 +518,7 @@ const smartTools = [
     },
     {
         name: 'execution',
-        description: 'Control execution flow. Consolidates debugger_resume and debugger_pause into a single action-based tool.' + SKILL_REF,
+        description: 'Control debugger execution flow. action="resume" continues running; action="pause" breaks at the next statement.' + SKILL_REF,
         inputSchema: {
             type: 'object',
             properties: {
@@ -936,12 +595,9 @@ const smartTools = [
         },
     },
 ];
-// Select tool set based on feature flag
-const activeTools = USE_LEGACY_TOOLS ? legacyTools : smartTools;
-// Phase 3: Registry Integration
-// Initialize registry at module load (eager initialization)
-const toolHandlers = createToolHandlers(USE_LEGACY_TOOLS, legacyTools, smartTools);
-const toolRegistry = createToolRegistry(activeTools, toolHandlers);
+// Initialize tool registry at module load (eager, fails fast on missing handlers)
+const toolHandlers = createToolHandlers(tools);
+const toolRegistry = createToolRegistry(tools, toolHandlers);
 /**
  * Type guard for errors with errorInfo property.
  */
@@ -1064,9 +720,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    const mode = USE_LEGACY_TOOLS ? 'LEGACY TOOLS' : 'SMART TOOLS';
-    console.error(`Cherry Chrome MCP Server running on stdio [MODE: ${mode}]`);
-    console.error(`Set USE_LEGACY_TOOLS=true to use original granular tools`);
+    console.error(`Cherry Chrome MCP Server running on stdio (${toolRegistry.size} tools)`);
 }
 main().catch((error) => {
     console.error('Server error:', error);

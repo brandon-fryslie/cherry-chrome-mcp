@@ -8,20 +8,6 @@ import { browserManager } from '../browser.js';
 import { successResponse, errorResponse } from '../response.js';
 import { gatherPauseContext, gatherStepContext } from './context.js';
 /**
- * Enable the Chrome debugger for the current connection.
- *
- * Must be called before using any debugger features.
- */
-export async function debuggerEnable(args) {
-    try {
-        await browserManager.enableDebugger(args.connection_id);
-        return successResponse('Debugger enabled successfully.\n\nYou can now set breakpoints, step through code, and inspect variables.');
-    }
-    catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
-    }
-}
-/**
  * Set a breakpoint at a specific line in a script.
  *
  * You can optionally add a condition (breakpoint only triggers when condition is true).
@@ -139,86 +125,6 @@ export async function debuggerEvaluateOnCallFrame(args) {
     }
 }
 /**
- * Step over the current line of code.
- *
- * Continues to the next line in the current function.
- */
-export async function debuggerStepOver(args) {
-    try {
-        browserManager.requirePaused(args.connection_id);
-        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
-        await cdpSession.send('Debugger.stepOver');
-        return successResponse('Stepped over to next line. Execution will pause at the next statement.');
-    }
-    catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
-    }
-}
-/**
- * Step into a function call.
- *
- * Enters the function being called on the current line.
- */
-export async function debuggerStepInto(args) {
-    try {
-        browserManager.requirePaused(args.connection_id);
-        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
-        await cdpSession.send('Debugger.stepInto');
-        return successResponse('Stepped into function. Execution will pause at the first statement inside.');
-    }
-    catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
-    }
-}
-/**
- * Step out of the current function.
- *
- * Returns to the calling function.
- */
-export async function debuggerStepOut(args) {
-    try {
-        browserManager.requirePaused(args.connection_id);
-        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
-        await cdpSession.send('Debugger.stepOut');
-        return successResponse('Stepped out of function. Execution will pause after returning to caller.');
-    }
-    catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
-    }
-}
-/**
- * Resume execution after being paused.
- *
- * Continues until the next breakpoint or debugger statement.
- */
-export async function debuggerResume(args) {
-    try {
-        browserManager.requirePaused(args.connection_id);
-        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
-        await cdpSession.send('Debugger.resume');
-        return successResponse('Execution resumed. Will pause at next breakpoint or debugger statement.');
-    }
-    catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
-    }
-}
-/**
- * Pause execution immediately.
- *
- * Stops at the next JavaScript statement.
- */
-export async function debuggerPause(args) {
-    try {
-        browserManager.requireNotPaused(args.connection_id);
-        const cdpSession = browserManager.getCDPSessionOrThrow(args.connection_id);
-        await cdpSession.send('Debugger.pause');
-        return successResponse('Pause requested. Execution will stop at the next JavaScript statement.');
-    }
-    catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
-    }
-}
-/**
  * Configure whether to pause on exceptions.
  *
  * Options: 'none' (default), 'uncaught', or 'all'.
@@ -242,7 +148,7 @@ export async function debuggerSetPauseOnExceptions(args) {
     }
 }
 /**
- * CONSOLIDATED: breakpoint - Set or remove breakpoints
+ * breakpoint - Set or remove breakpoints
  *
  * Replaces debugger_set_breakpoint and debugger_remove_breakpoint with a single tool.
  */
@@ -273,10 +179,10 @@ export async function breakpoint(args) {
     }
 }
 /**
- * CONSOLIDATED (P2): step - Step through code with smart context
+ * step - Step through code with smart context.
  *
- * Replaces debugger_step_over, debugger_step_into, and debugger_step_out.
- * Auto-includes new location, local variables with [CHANGED] markers, and new console logs.
+ * Direction: "over" | "into" | "out". Auto-includes new location, local
+ * variables with [CHANGED] markers, and new console logs.
  */
 export async function step(args) {
     const includeContext = args.include_context ?? true;
@@ -316,10 +222,10 @@ export async function step(args) {
     }
 }
 /**
- * CONSOLIDATED (P2): execution - Resume or pause with smart context
+ * execution - Resume or pause with smart context.
  *
- * Replaces debugger_resume and debugger_pause.
- * When paused, auto-includes call stack, local variables, and console logs.
+ * Action: "resume" | "pause". When paused, auto-includes call stack,
+ * local variables, and console logs.
  */
 export async function execution(args) {
     const includeContext = args.include_context ?? true;
@@ -357,7 +263,7 @@ export async function execution(args) {
     }
 }
 /**
- * CONSOLIDATED: evaluate - Evaluate expression in call frame or global scope
+ * evaluate - Evaluate expression in call frame or global scope
  *
  * Replaces debugger_evaluate_on_call_frame with a more flexible tool.
  */
@@ -374,7 +280,7 @@ export async function evaluate(args) {
     }
 }
 /**
- * CONSOLIDATED: call_stack - Get current call stack
+ * call_stack - Get current call stack
  *
  * Alias for debugger_get_call_stack with shorter name.
  */
@@ -382,7 +288,7 @@ export async function callStack(args) {
     return debuggerGetCallStack({ connection_id: args.connection_id });
 }
 /**
- * CONSOLIDATED: pause_on_exceptions - Configure exception breaking
+ * pause_on_exceptions - Configure exception breaking
  *
  * Alias for debugger_set_pause_on_exceptions with shorter name.
  */
