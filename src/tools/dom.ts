@@ -1073,6 +1073,14 @@ export async function pressKey(args: {
           if (${index} >= els.length) return { ok: false, error: 'Only ' + els.length + ' element(s) found, index ${index} out of range' };
           const el = els[${index}];
           el.focus();
+          // .focus() can no-op silently when the element is disabled,
+          // tabindex=-1 without explicit focus support, hidden, or in a
+          // detached subtree. Verifying activeElement makes failure loud
+          // — otherwise the keystroke would silently land on whatever was
+          // focused before, and we'd report success on the wrong target.
+          if (document.activeElement !== el) {
+            return { ok: false, error: 'Selected element did not accept focus (disabled, hidden, or non-focusable?)' };
+          }
           return { ok: true, tag: el.tagName.toLowerCase() };
         })()`,
       ) as { ok: boolean; error?: string; tag?: string };
@@ -1095,15 +1103,26 @@ export async function pressKey(args: {
     }
 
     // Parse "Shift+5" / "Control+b" / "Enter" into modifiers + main key.
+    // Dedupe with a Set so input like "Shift+Shift+a" or "Ctrl+Control+a"
+    // doesn't translate to two `keyboard.down('Shift')` calls — that
+    // would emit a duplicate keydown for the held modifier.
     const parts = key.split('+').map((p) => p.trim());
-    const modifiers: Array<'Control' | 'Shift' | 'Alt' | 'Meta'> = [];
+    type Modifier = 'Control' | 'Shift' | 'Alt' | 'Meta';
+    const modifiers: Modifier[] = [];
+    const seen = new Set<Modifier>();
     let mainKey = '';
     for (const part of parts) {
-      if (part === 'Control' || part === 'Ctrl') modifiers.push('Control');
-      else if (part === 'Shift') modifiers.push('Shift');
-      else if (part === 'Alt') modifiers.push('Alt');
-      else if (part === 'Meta' || part === 'Cmd') modifiers.push('Meta');
+      let mod: Modifier | null = null;
+      if (part === 'Control' || part === 'Ctrl') mod = 'Control';
+      else if (part === 'Shift') mod = 'Shift';
+      else if (part === 'Alt') mod = 'Alt';
+      else if (part === 'Meta' || part === 'Cmd') mod = 'Meta';
       else mainKey = part;
+
+      if (mod !== null && !seen.has(mod)) {
+        seen.add(mod);
+        modifiers.push(mod);
+      }
     }
     if (mainKey === '') {
       return errorResponse(`No main key in '${key}' — only modifiers were parsed`);
