@@ -199,12 +199,6 @@ export declare function blur(args: {
     }>;
     isError?: boolean;
 }>;
-/**
- * Press a key on the keyboard.
- *
- * Supports single keys (Enter, Escape, Tab, ArrowUp, etc.) and combinations (Control+a, Shift+Enter).
- * If selector provided, focuses element first. Otherwise dispatches on document.activeElement.
- */
 export declare function pressKey(args: {
     key: string;
     selector?: string;

@@ -1047,115 +1047,137 @@ export async function blur(args: {
  * Supports single keys (Enter, Escape, Tab, ArrowUp, etc.) and combinations (Control+a, Shift+Enter).
  * If selector provided, focuses element first. Otherwise dispatches on document.activeElement.
  */
+// [LAW:one-source-of-truth] Modifier name → canonical puppeteer KeyInput.
+// Aliases (Ctrl, Cmd) collapse here so downstream code never branches on
+// alternate spellings.
+type Modifier = 'Control' | 'Shift' | 'Alt' | 'Meta';
+const MODIFIER_ALIASES: Readonly<Record<string, Modifier>> = {
+  Control: 'Control', Ctrl: 'Control',
+  Shift: 'Shift',
+  Alt: 'Alt',
+  Meta: 'Meta', Cmd: 'Meta',
+};
+
+interface ParsedChord {
+  readonly modifiers: readonly Modifier[];
+  readonly mainKey: string;
+}
+
+// [LAW:dataflow-not-control-flow] Single pass over input parts; each part
+// is either a modifier (added to the Set) or the main key (overwrites the
+// slot). The Set's insertion order IS the dedup mechanism — no "if not
+// seen" guard, no parallel array. Output shape is uniform regardless of
+// input.
+function parseChord(key: string): ParsedChord {
+  const seen = new Set<Modifier>();
+  let mainKey = '';
+  for (const part of key.split('+').map((p) => p.trim())) {
+    const mod = MODIFIER_ALIASES[part];
+    if (mod === undefined) mainKey = part;
+    else seen.add(mod);
+  }
+  return { modifiers: [...seen], mainKey };
+}
+
+// Result of resolving the keystroke target. Discriminated so callers
+// don't need defensive `tag ?? 'unknown'` coalescing — when ok=true,
+// tag is guaranteed.
+type ResolvedTarget =
+  | { readonly ok: true; readonly tag: string }
+  | { readonly ok: false; readonly error: string };
+
 export async function pressKey(args: {
   key: string;
   selector?: string;
   index?: number;
   connection_id?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  const key = args.key;
-  const selector = args.selector;
+  const { key, selector, connection_id } = args;
   const index = args.index ?? 0;
 
   try {
-    const page = browserManager.getPageOrThrow(args.connection_id);
+    const page = browserManager.getPageOrThrow(connection_id);
 
-    // Optional focus step. Done in-page with evaluate so we can pick the
-    // Nth match of a CSS selector (puppeteer's page.focus only takes the
-    // first). Also captures the focused element's tag for the response.
-    let focusedTag: string;
-    if (selector) {
-      const escapedSelector = escapeForJs(selector);
-      const focusResult = await page.evaluate(
-        `(() => {
-          const els = document.querySelectorAll('${escapedSelector}');
-          if (els.length === 0) return { ok: false, error: 'No elements found matching selector' };
-          if (${index} >= els.length) return { ok: false, error: 'Only ' + els.length + ' element(s) found, index ${index} out of range' };
-          const el = els[${index}];
-          el.focus();
-          // .focus() can no-op silently when the element is disabled,
-          // tabindex=-1 without explicit focus support, hidden, or in a
-          // detached subtree. Verifying activeElement makes failure loud
-          // — otherwise the keystroke would silently land on whatever was
-          // focused before, and we'd report success on the wrong target.
-          if (document.activeElement !== el) {
-            return { ok: false, error: 'Selected element did not accept focus (disabled, hidden, or non-focusable?)' };
+    // [LAW:dataflow-not-control-flow] ONE evaluate resolves the target
+    // element regardless of whether the caller supplied a selector. The
+    // variability lives in the `sel` argument (null vs string), not in
+    // which call we make. The browser-side function always returns the
+    // same shape (ResolvedTarget); the surface here doesn't fork.
+    //
+    // Args are passed through puppeteer's evaluate(fn, ...args) marshal
+    // — never string-templated into a script body — so selectors with
+    // quotes/backslashes can't break parsing or be used as injection.
+    const target = await page.evaluate(
+      (sel: string | null, idx: number): ResolvedTarget => {
+        const candidate: Element | null =
+          sel === null
+            ? document.activeElement
+            : document.querySelectorAll(sel).item(idx);
+
+        if (candidate === null || candidate === document.body) {
+          return {
+            ok: false,
+            error:
+              sel === null
+                ? 'No element focused on page'
+                : `No element matched '${sel}' at index ${idx}`,
+          };
+        }
+
+        // Focus step only runs when the caller named the target; the
+        // activeElement branch is already focused by definition. After
+        // .focus() we MUST verify activeElement === candidate — focus
+        // silently no-ops on disabled / hidden / detached / non-focusable
+        // elements, which would otherwise let the keystroke land on the
+        // wrong target while we report success.
+        if (sel !== null) {
+          (candidate as HTMLElement).focus();
+          if (document.activeElement !== candidate) {
+            return {
+              ok: false,
+              error: `Element matched by '${sel}' did not accept focus (disabled, hidden, or non-focusable?)`,
+            };
           }
-          return { ok: true, tag: el.tagName.toLowerCase() };
-        })()`,
-      ) as { ok: boolean; error?: string; tag?: string };
-      if (!focusResult.ok) {
-        return errorResponse(focusResult.error || 'Focus failed');
-      }
-      focusedTag = focusResult.tag ?? 'unknown';
-    } else {
-      const activeResult = await page.evaluate(
-        `(() => {
-          const el = document.activeElement;
-          if (!el || el === document.body) return { ok: false, error: 'No element focused on page' };
-          return { ok: true, tag: el.tagName.toLowerCase() };
-        })()`,
-      ) as { ok: boolean; error?: string; tag?: string };
-      if (!activeResult.ok) {
-        return errorResponse(activeResult.error || 'No element focused');
-      }
-      focusedTag = activeResult.tag ?? 'unknown';
-    }
+        }
+        return { ok: true, tag: candidate.tagName.toLowerCase() };
+      },
+      selector ?? null,
+      index,
+    );
 
-    // Parse "Shift+5" / "Control+b" / "Enter" into modifiers + main key.
-    // Dedupe with a Set so input like "Shift+Shift+a" or "Ctrl+Control+a"
-    // doesn't translate to two `keyboard.down('Shift')` calls — that
-    // would emit a duplicate keydown for the held modifier.
-    const parts = key.split('+').map((p) => p.trim());
-    type Modifier = 'Control' | 'Shift' | 'Alt' | 'Meta';
-    const modifiers: Modifier[] = [];
-    const seen = new Set<Modifier>();
-    let mainKey = '';
-    for (const part of parts) {
-      let mod: Modifier | null = null;
-      if (part === 'Control' || part === 'Ctrl') mod = 'Control';
-      else if (part === 'Shift') mod = 'Shift';
-      else if (part === 'Alt') mod = 'Alt';
-      else if (part === 'Meta' || part === 'Cmd') mod = 'Meta';
-      else mainKey = part;
+    if (!target.ok) return errorResponse(target.error);
 
-      if (mod !== null && !seen.has(mod)) {
-        seen.add(mod);
-        modifiers.push(mod);
-      }
-    }
+    const { modifiers, mainKey } = parseChord(key);
     if (mainKey === '') {
       return errorResponse(`No main key in '${key}' — only modifiers were parsed`);
     }
 
-    // Delegate to puppeteer's keyboard, which uses CDP Input.dispatchKey-
-    // Event under the hood. This produces TRUSTED events (isTrusted=true)
-    // and resolves shifted characters via the US keyboard layout map —
-    // e.g. Shift+5 → key="%", Shift+a → key="A". Synthesized
-    // `new KeyboardEvent(...)` cannot do either: synthetic events are
-    // never trusted, and they don't pass through Chromium's input layer
-    // that owns the layout-aware shift mapping.
+    // [LAW:single-enforcer] All keystroke synthesis happens through
+    // puppeteer's keyboard, which goes through CDP Input.dispatchKeyEvent.
+    // CDP-originated events are trusted (isTrusted=true) and resolve
+    // shifted characters via puppeteer's USKeyboardLayout — Shift+5
+    // becomes key="%", Shift+a becomes key="A". `new KeyboardEvent(...)`
+    // can do neither.
     //
-    // Map "Space" → " " for puppeteer; everything else is passed through
-    // (single chars like "5", "a", "%" and named keys like "Enter",
-    // "Tab" are all valid KeyInput values).
-    const keyToPress = mainKey === 'Space' ? ' ' : mainKey;
+    // "Space" → " " is the one token that needs translation; every other
+    // input ("5", "a", "%", "Enter", "Tab", ...) is a valid KeyInput
+    // token already.
+    const keyToPress = (mainKey === 'Space' ? ' ' : mainKey) as Parameters<
+      typeof page.keyboard.press
+    >[0];
 
-    for (const m of modifiers) {
-      await page.keyboard.down(m);
-    }
+    // Hold modifiers, press main key, always release modifiers. The
+    // try/finally is not control flow over the operation — it's a
+    // resource-acquisition guard so a failed press never leaves a
+    // sticky Shift/Control for the next call.
+    for (const m of modifiers) await page.keyboard.down(m);
     try {
-      await page.keyboard.press(keyToPress as Parameters<typeof page.keyboard.press>[0]);
+      await page.keyboard.press(keyToPress);
     } finally {
-      // Always release modifiers, even if press throws (unrecognized key,
-      // detached frame, etc.) — otherwise the next interaction inherits
-      // a stuck Shift/Control.
-      for (const m of [...modifiers].reverse()) {
-        await page.keyboard.up(m);
-      }
+      for (const m of [...modifiers].reverse()) await page.keyboard.up(m);
     }
 
-    return successResponse(`Pressed key '${key}' on <${focusedTag}>`);
+    return successResponse(`Pressed key '${key}' on <${target.tag}>`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
   }
