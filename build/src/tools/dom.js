@@ -898,6 +898,19 @@ function parseChord(key) {
     }
     return { modifiers: [...seen], mainKey };
 }
+/**
+ * Press a key on the keyboard via puppeteer's CDP-backed input pipeline.
+ *
+ * Supports named keys ("Enter", "Escape", "Tab", "ArrowUp", ...) and
+ * modifier combinations ("Control+a", "Shift+Enter", "Shift+5"). Shifted
+ * characters are resolved by puppeteer's USKeyboardLayout — pressing
+ * "5" with Shift held produces key="%" in the resulting KeyboardEvent,
+ * not key="5". Events are dispatched as trusted (isTrusted=true).
+ *
+ * If `selector` is supplied, the Nth match is focused first (and focus
+ * is verified). If not supplied, the keystroke goes to whatever is
+ * currently focused (must not be document.body).
+ */
 export async function pressKey(args) {
     const { key, selector, connection_id } = args;
     const index = args.index ?? 0;
