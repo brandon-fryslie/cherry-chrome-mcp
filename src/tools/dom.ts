@@ -1059,103 +1059,84 @@ export async function pressKey(args: {
 
   try {
     const page = browserManager.getPageOrThrow(args.connection_id);
-    let escapedSelector = '';
+
+    // Optional focus step. Done in-page with evaluate so we can pick the
+    // Nth match of a CSS selector (puppeteer's page.focus only takes the
+    // first). Also captures the focused element's tag for the response.
+    let focusedTag: string;
     if (selector) {
-      escapedSelector = escapeForJs(selector);
+      const escapedSelector = escapeForJs(selector);
+      const focusResult = await page.evaluate(
+        `(() => {
+          const els = document.querySelectorAll('${escapedSelector}');
+          if (els.length === 0) return { ok: false, error: 'No elements found matching selector' };
+          if (${index} >= els.length) return { ok: false, error: 'Only ' + els.length + ' element(s) found, index ${index} out of range' };
+          const el = els[${index}];
+          el.focus();
+          return { ok: true, tag: el.tagName.toLowerCase() };
+        })()`,
+      ) as { ok: boolean; error?: string; tag?: string };
+      if (!focusResult.ok) {
+        return errorResponse(focusResult.error || 'Focus failed');
+      }
+      focusedTag = focusResult.tag ?? 'unknown';
+    } else {
+      const activeResult = await page.evaluate(
+        `(() => {
+          const el = document.activeElement;
+          if (!el || el === document.body) return { ok: false, error: 'No element focused on page' };
+          return { ok: true, tag: el.tagName.toLowerCase() };
+        })()`,
+      ) as { ok: boolean; error?: string; tag?: string };
+      if (!activeResult.ok) {
+        return errorResponse(activeResult.error || 'No element focused');
+      }
+      focusedTag = activeResult.tag ?? 'unknown';
     }
 
-    const script = `
-      (() => {
-        let element = null;
-
-        if ('${escapedSelector}') {
-          const elements = document.querySelectorAll('${escapedSelector}');
-          if (elements.length === 0) {
-            return { success: false, error: 'No elements found matching selector' };
-          }
-          if (${index} >= elements.length) {
-            return { success: false, error: 'Only ' + elements.length + ' element(s) found, index ${index} out of range' };
-          }
-          element = elements[${index}];
-          element.focus();
-        } else {
-          element = document.activeElement;
-          if (!element || element === document.body) {
-            return { success: false, error: 'No element focused on page' };
-          }
-        }
-
-        // Parse key name
-        const keyStr = '${key}';
-        const parts = keyStr.split('+');
-        let keyCode = '';
-        let keyName = '';
-        let shiftKey = false;
-        let ctrlKey = false;
-        let altKey = false;
-        let metaKey = false;
-
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i].trim();
-          if (part === 'Control' || part === 'Ctrl') ctrlKey = true;
-          else if (part === 'Shift') shiftKey = true;
-          else if (part === 'Alt') altKey = true;
-          else if (part === 'Meta' || part === 'Cmd') metaKey = true;
-          else keyName = part;
-        }
-
-        // Map key name to code
-        const keyMap = {
-          'Enter': 'Enter',
-          'Escape': 'Escape',
-          'Tab': 'Tab',
-          'Backspace': 'Backspace',
-          'Delete': 'Delete',
-          'ArrowUp': 'ArrowUp',
-          'ArrowDown': 'ArrowDown',
-          'ArrowLeft': 'ArrowLeft',
-          'ArrowRight': 'ArrowRight',
-          'Home': 'Home',
-          'End': 'End',
-          'PageUp': 'PageUp',
-          'PageDown': 'PageDown',
-          'Space': ' ',
-        };
-
-        const code = keyMap[keyName] || keyName;
-
-        // Dispatch key events
-        const eventProps = {
-          key: code,
-          code: code,
-          bubbles: true,
-          cancelable: true,
-          shiftKey,
-          ctrlKey,
-          altKey,
-          metaKey
-        };
-
-        element.dispatchEvent(new KeyboardEvent('keydown', eventProps));
-        element.dispatchEvent(new KeyboardEvent('keypress', eventProps));
-        element.dispatchEvent(new KeyboardEvent('keyup', eventProps));
-
-        return {
-          success: true,
-          tag: element.tagName.toLowerCase(),
-          key: keyName
-        };
-      })()
-    `;
-
-    const result = await page.evaluate(script) as { success: boolean; error?: string; tag?: string; key?: string };
-
-    if (!result.success) {
-      return errorResponse(result.error || 'Press key failed');
+    // Parse "Shift+5" / "Control+b" / "Enter" into modifiers + main key.
+    const parts = key.split('+').map((p) => p.trim());
+    const modifiers: Array<'Control' | 'Shift' | 'Alt' | 'Meta'> = [];
+    let mainKey = '';
+    for (const part of parts) {
+      if (part === 'Control' || part === 'Ctrl') modifiers.push('Control');
+      else if (part === 'Shift') modifiers.push('Shift');
+      else if (part === 'Alt') modifiers.push('Alt');
+      else if (part === 'Meta' || part === 'Cmd') modifiers.push('Meta');
+      else mainKey = part;
+    }
+    if (mainKey === '') {
+      return errorResponse(`No main key in '${key}' — only modifiers were parsed`);
     }
 
-    const response = `Pressed key '${result.key}' on <${result.tag}>`;
-    return successResponse(response);
+    // Delegate to puppeteer's keyboard, which uses CDP Input.dispatchKey-
+    // Event under the hood. This produces TRUSTED events (isTrusted=true)
+    // and resolves shifted characters via the US keyboard layout map —
+    // e.g. Shift+5 → key="%", Shift+a → key="A". Synthesized
+    // `new KeyboardEvent(...)` cannot do either: synthetic events are
+    // never trusted, and they don't pass through Chromium's input layer
+    // that owns the layout-aware shift mapping.
+    //
+    // Map "Space" → " " for puppeteer; everything else is passed through
+    // (single chars like "5", "a", "%" and named keys like "Enter",
+    // "Tab" are all valid KeyInput values).
+    const keyToPress = mainKey === 'Space' ? ' ' : mainKey;
+
+    for (const m of modifiers) {
+      await page.keyboard.down(m);
+    }
+    try {
+      await page.keyboard.press(keyToPress as Parameters<typeof page.keyboard.press>[0]);
+    } finally {
+      // Always release modifiers, even if press throws (unrecognized key,
+      // detached frame, etc.) — otherwise the next interaction inherits
+      // a stuck Shift/Control.
+      for (const m of [...modifiers].reverse()) {
+        await page.keyboard.up(m);
+      }
+    }
+
+    return successResponse(`Pressed key '${key}' on <${focusedTag}>`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
   }
