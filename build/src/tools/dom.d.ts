@@ -200,10 +200,17 @@ export declare function blur(args: {
     isError?: boolean;
 }>;
 /**
- * Press a key on the keyboard.
+ * Press a key on the keyboard via puppeteer's CDP-backed input pipeline.
  *
- * Supports single keys (Enter, Escape, Tab, ArrowUp, etc.) and combinations (Control+a, Shift+Enter).
- * If selector provided, focuses element first. Otherwise dispatches on document.activeElement.
+ * Supports named keys ("Enter", "Escape", "Tab", "ArrowUp", ...) and
+ * modifier combinations ("Control+a", "Shift+Enter", "Shift+5"). Shifted
+ * characters are resolved by puppeteer's USKeyboardLayout — pressing
+ * "5" with Shift held produces key="%" in the resulting KeyboardEvent,
+ * not key="5". Events are dispatched as trusted (isTrusted=true).
+ *
+ * If `selector` is supplied, the Nth match is focused first (and focus
+ * is verified). If not supplied, the keystroke goes to whatever is
+ * currently focused (must not be document.body).
  */
 export declare function pressKey(args: {
     key: string;

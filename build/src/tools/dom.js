@@ -875,111 +875,116 @@ export async function blur(args) {
         return errorResponse(error instanceof Error ? error.message : String(error));
     }
 }
+const MODIFIER_ALIASES = {
+    Control: 'Control', Ctrl: 'Control',
+    Shift: 'Shift',
+    Alt: 'Alt',
+    Meta: 'Meta', Cmd: 'Meta',
+};
+// [LAW:dataflow-not-control-flow] Single pass over input parts; each part
+// is either a modifier (added to the Set) or the main key (overwrites the
+// slot). The Set's insertion order IS the dedup mechanism — no "if not
+// seen" guard, no parallel array. Output shape is uniform regardless of
+// input.
+function parseChord(key) {
+    const seen = new Set();
+    let mainKey = '';
+    for (const part of key.split('+').map((p) => p.trim())) {
+        const mod = MODIFIER_ALIASES[part];
+        if (mod === undefined)
+            mainKey = part;
+        else
+            seen.add(mod);
+    }
+    return { modifiers: [...seen], mainKey };
+}
 /**
- * Press a key on the keyboard.
+ * Press a key on the keyboard via puppeteer's CDP-backed input pipeline.
  *
- * Supports single keys (Enter, Escape, Tab, ArrowUp, etc.) and combinations (Control+a, Shift+Enter).
- * If selector provided, focuses element first. Otherwise dispatches on document.activeElement.
+ * Supports named keys ("Enter", "Escape", "Tab", "ArrowUp", ...) and
+ * modifier combinations ("Control+a", "Shift+Enter", "Shift+5"). Shifted
+ * characters are resolved by puppeteer's USKeyboardLayout — pressing
+ * "5" with Shift held produces key="%" in the resulting KeyboardEvent,
+ * not key="5". Events are dispatched as trusted (isTrusted=true).
+ *
+ * If `selector` is supplied, the Nth match is focused first (and focus
+ * is verified). If not supplied, the keystroke goes to whatever is
+ * currently focused (must not be document.body).
  */
 export async function pressKey(args) {
-    const key = args.key;
-    const selector = args.selector;
+    const { key, selector, connection_id } = args;
     const index = args.index ?? 0;
     try {
-        const page = browserManager.getPageOrThrow(args.connection_id);
-        let escapedSelector = '';
-        if (selector) {
-            escapedSelector = escapeForJs(selector);
+        const page = browserManager.getPageOrThrow(connection_id);
+        // [LAW:dataflow-not-control-flow] ONE evaluate resolves the target
+        // element regardless of whether the caller supplied a selector. The
+        // variability lives in the `sel` argument (null vs string), not in
+        // which call we make. The browser-side function always returns the
+        // same shape (ResolvedTarget); the surface here doesn't fork.
+        //
+        // Args are passed through puppeteer's evaluate(fn, ...args) marshal
+        // — never string-templated into a script body — so selectors with
+        // quotes/backslashes can't break parsing or be used as injection.
+        const target = await page.evaluate((sel, idx) => {
+            const candidate = sel === null
+                ? document.activeElement
+                : document.querySelectorAll(sel).item(idx);
+            if (candidate === null || candidate === document.body) {
+                return {
+                    ok: false,
+                    error: sel === null
+                        ? 'No element focused on page'
+                        : `No element matched '${sel}' at index ${idx}`,
+                };
+            }
+            // Focus step only runs when the caller named the target; the
+            // activeElement branch is already focused by definition. After
+            // .focus() we MUST verify activeElement === candidate — focus
+            // silently no-ops on disabled / hidden / detached / non-focusable
+            // elements, which would otherwise let the keystroke land on the
+            // wrong target while we report success.
+            if (sel !== null) {
+                candidate.focus();
+                if (document.activeElement !== candidate) {
+                    return {
+                        ok: false,
+                        error: `Element matched by '${sel}' did not accept focus (disabled, hidden, or non-focusable?)`,
+                    };
+                }
+            }
+            return { ok: true, tag: candidate.tagName.toLowerCase() };
+        }, selector ?? null, index);
+        if (!target.ok)
+            return errorResponse(target.error);
+        const { modifiers, mainKey } = parseChord(key);
+        if (mainKey === '') {
+            return errorResponse(`No main key in '${key}' — only modifiers were parsed`);
         }
-        const script = `
-      (() => {
-        let element = null;
-
-        if ('${escapedSelector}') {
-          const elements = document.querySelectorAll('${escapedSelector}');
-          if (elements.length === 0) {
-            return { success: false, error: 'No elements found matching selector' };
-          }
-          if (${index} >= elements.length) {
-            return { success: false, error: 'Only ' + elements.length + ' element(s) found, index ${index} out of range' };
-          }
-          element = elements[${index}];
-          element.focus();
-        } else {
-          element = document.activeElement;
-          if (!element || element === document.body) {
-            return { success: false, error: 'No element focused on page' };
-          }
+        // [LAW:single-enforcer] All keystroke synthesis happens through
+        // puppeteer's keyboard, which goes through CDP Input.dispatchKeyEvent.
+        // CDP-originated events are trusted (isTrusted=true) and resolve
+        // shifted characters via puppeteer's USKeyboardLayout — Shift+5
+        // becomes key="%", Shift+a becomes key="A". `new KeyboardEvent(...)`
+        // can do neither.
+        //
+        // "Space" → " " is the one token that needs translation; every other
+        // input ("5", "a", "%", "Enter", "Tab", ...) is a valid KeyInput
+        // token already.
+        const keyToPress = (mainKey === 'Space' ? ' ' : mainKey);
+        // Hold modifiers, press main key, always release modifiers. The
+        // try/finally is not control flow over the operation — it's a
+        // resource-acquisition guard so a failed press never leaves a
+        // sticky Shift/Control for the next call.
+        for (const m of modifiers)
+            await page.keyboard.down(m);
+        try {
+            await page.keyboard.press(keyToPress);
         }
-
-        // Parse key name
-        const keyStr = '${key}';
-        const parts = keyStr.split('+');
-        let keyCode = '';
-        let keyName = '';
-        let shiftKey = false;
-        let ctrlKey = false;
-        let altKey = false;
-        let metaKey = false;
-
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i].trim();
-          if (part === 'Control' || part === 'Ctrl') ctrlKey = true;
-          else if (part === 'Shift') shiftKey = true;
-          else if (part === 'Alt') altKey = true;
-          else if (part === 'Meta' || part === 'Cmd') metaKey = true;
-          else keyName = part;
+        finally {
+            for (const m of [...modifiers].reverse())
+                await page.keyboard.up(m);
         }
-
-        // Map key name to code
-        const keyMap = {
-          'Enter': 'Enter',
-          'Escape': 'Escape',
-          'Tab': 'Tab',
-          'Backspace': 'Backspace',
-          'Delete': 'Delete',
-          'ArrowUp': 'ArrowUp',
-          'ArrowDown': 'ArrowDown',
-          'ArrowLeft': 'ArrowLeft',
-          'ArrowRight': 'ArrowRight',
-          'Home': 'Home',
-          'End': 'End',
-          'PageUp': 'PageUp',
-          'PageDown': 'PageDown',
-          'Space': ' ',
-        };
-
-        const code = keyMap[keyName] || keyName;
-
-        // Dispatch key events
-        const eventProps = {
-          key: code,
-          code: code,
-          bubbles: true,
-          cancelable: true,
-          shiftKey,
-          ctrlKey,
-          altKey,
-          metaKey
-        };
-
-        element.dispatchEvent(new KeyboardEvent('keydown', eventProps));
-        element.dispatchEvent(new KeyboardEvent('keypress', eventProps));
-        element.dispatchEvent(new KeyboardEvent('keyup', eventProps));
-
-        return {
-          success: true,
-          tag: element.tagName.toLowerCase(),
-          key: keyName
-        };
-      })()
-    `;
-        const result = await page.evaluate(script);
-        if (!result.success) {
-            return errorResponse(result.error || 'Press key failed');
-        }
-        const response = `Pressed key '${result.key}' on <${result.tag}>`;
-        return successResponse(response);
+        return successResponse(`Pressed key '${key}' on <${target.tag}>`);
     }
     catch (error) {
         return errorResponse(error instanceof Error ? error.message : String(error));
