@@ -1080,18 +1080,44 @@ type ResolvedTarget =
   | { readonly ok: true; readonly tag: string }
   | { readonly ok: false; readonly error: string };
 
-// Translate a single character into its puppeteer KeyInput form so that
-// shifted characters are resolved by USKeyboardLayout. The literal
-// entries (`'5'`, `'a'`) have no `shiftKey` field; the Code-form
-// entries (Digit5, KeyA) do. Anything else (named keys, uppercase,
-// symbols) passes through unchanged. "Space" is the one named token
-// puppeteer expects as a literal " " character.
+// [LAW:one-source-of-truth] Mapping from a single ASCII character to
+// the puppeteer KeyInput token whose USKeyboardLayout entry carries the
+// `shiftKey` field. The literal entries (`'5'`, `'a'`, `'/'`) have no
+// shiftKey; the Code-form entries (Digit5, KeyA, Slash) do. So
+// `keyboard.press('/')` with Shift held emits key="/", but
+// `keyboard.press('Slash')` with Shift held emits key="?".
+//
+// Single digits and lowercase letters are computed (saves a 36-entry
+// map). Symbol keys are listed explicitly because their Code-form names
+// don't follow a predictable pattern.
+const SYMBOL_TO_CODE: Readonly<Record<string, string>> = {
+  ';': 'Semicolon',
+  '=': 'Equal',
+  ',': 'Comma',
+  '-': 'Minus',
+  '.': 'Period',
+  '/': 'Slash',
+  '`': 'Backquote',
+  '[': 'BracketLeft',
+  '\\': 'Backslash',
+  ']': 'BracketRight',
+  "'": 'Quote',
+};
+
+// Translate a single character into its puppeteer KeyInput form. Multi-
+// char names (Enter, ArrowUp, F1), uppercase letters, and already-
+// shifted symbols (%, &, !, ", >, _, etc.) pass through unchanged —
+// those have direct USKeyboardLayout entries that already produce the
+// intended `key` value. "Space" is the one named token puppeteer expects
+// as a literal " " character.
 function toPuppeteerKey(mainKey: string): string {
   if (mainKey === 'Space') return ' ';
   if (mainKey.length === 1) {
     const c = mainKey.charCodeAt(0);
     if (c >= 48 && c <= 57) return `Digit${mainKey}`; // '0'-'9'
     if (c >= 97 && c <= 122) return `Key${mainKey.toUpperCase()}`; // 'a'-'z'
+    const symbol = SYMBOL_TO_CODE[mainKey];
+    if (symbol !== undefined) return symbol;
   }
   return mainKey;
 }
