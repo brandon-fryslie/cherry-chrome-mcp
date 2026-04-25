@@ -1080,6 +1080,22 @@ type ResolvedTarget =
   | { readonly ok: true; readonly tag: string }
   | { readonly ok: false; readonly error: string };
 
+// Translate a single character into its puppeteer KeyInput form so that
+// shifted characters are resolved by USKeyboardLayout. The literal
+// entries (`'5'`, `'a'`) have no `shiftKey` field; the Code-form
+// entries (Digit5, KeyA) do. Anything else (named keys, uppercase,
+// symbols) passes through unchanged. "Space" is the one named token
+// puppeteer expects as a literal " " character.
+function toPuppeteerKey(mainKey: string): string {
+  if (mainKey === 'Space') return ' ';
+  if (mainKey.length === 1) {
+    const c = mainKey.charCodeAt(0);
+    if (c >= 48 && c <= 57) return `Digit${mainKey}`; // '0'-'9'
+    if (c >= 97 && c <= 122) return `Key${mainKey.toUpperCase()}`; // 'a'-'z'
+  }
+  return mainKey;
+}
+
 /**
  * Press a key on the keyboard via puppeteer's CDP-backed input pipeline.
  *
@@ -1161,15 +1177,20 @@ export async function pressKey(args: {
 
     // [LAW:single-enforcer] All keystroke synthesis happens through
     // puppeteer's keyboard, which goes through CDP Input.dispatchKeyEvent.
-    // CDP-originated events are trusted (isTrusted=true) and resolve
-    // shifted characters via puppeteer's USKeyboardLayout — Shift+5
-    // becomes key="%", Shift+a becomes key="A". `new KeyboardEvent(...)`
-    // can do neither.
+    // CDP-originated events are trusted (isTrusted=true).
     //
-    // "Space" → " " is the one token that needs translation; every other
-    // input ("5", "a", "%", "Enter", "Tab", ...) is a valid KeyInput
-    // token already.
-    const keyToPress = (mainKey === 'Space' ? ' ' : mainKey) as Parameters<
+    // [LAW:one-source-of-truth] Shifted-character resolution lives in
+    // puppeteer's USKeyboardLayout — but only on the entries keyed by
+    // KeyboardEvent.code (Digit5: { shiftKey: '%' }), not the literal
+    // entries (`'5'`: no shiftKey). So `keyboard.press('5')` with Shift
+    // held emits key="5", while `keyboard.press('Digit5')` with Shift
+    // held emits key="%". toCodeForm normalizes single digits and
+    // lowercase letters to the Code form so shift mapping applies
+    // uniformly. Multi-char names ("Enter", "ArrowUp", "F1"), uppercase
+    // letters ("A"), and already-shifted symbols ("%", "&", "!") pass
+    // through unchanged — those have direct entries that produce the
+    // intended `key` value.
+    const keyToPress = toPuppeteerKey(mainKey) as Parameters<
       typeof page.keyboard.press
     >[0];
 
