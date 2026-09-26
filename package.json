@@ -8,8 +8,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "npm run build && node build/src/index.js",
-    "test": "npm run build && node --test build/tests/*.test.js",
+    "start": "pnpm build && node build/src/index.js",
+    "test": "pnpm build && node --test build/tests/*.test.js",
     "test:watch": "node --test --watch build/tests/*.test.js",
     "clean": "rm -rf build"
   },
@@ -41,5 +41,6 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "packageManager": "pnpm@10.28.2"
 }

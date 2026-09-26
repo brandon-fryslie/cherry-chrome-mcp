@@ -6,38 +6,38 @@ default:
 
 # Build TypeScript
 build:
-    npm run build
+    pnpm build
 
 # Watch mode for development
 dev:
-    npm run dev
+    pnpm dev
 
 # Build and run tests
 test:
-    npm run test
+    pnpm test
 
 # Watch tests (requires build first)
 test-watch:
-    npm run test:watch
+    pnpm test:watch
 
 # Build and start the MCP server
 start:
-    npm run start
+    pnpm start
 
 # Remove build directory
 clean:
-    npm run clean
+    pnpm clean
 
 # Rebuild from scratch
 rebuild: clean build
 
 # Test with MCP Inspector (legacy mode)
 inspector:
-    npx @modelcontextprotocol/inspector node build/src/index.js
+    pnpm dlx @modelcontextprotocol/inspector node build/src/index.js
 
 # Test with MCP Inspector (smart mode)
 inspector-smart:
-    USE_SMART_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
+    USE_SMART_TOOLS=true pnpm dlx @modelcontextprotocol/inspector node build/src/index.js
 
 # Run feature toggle tests
 test-toggle:
@@ -45,8 +45,8 @@ test-toggle:
 
 # Install dependencies
 install:
-    npm install
+    pnpm install
 
 # Check TypeScript without emitting
 check:
-    npx tsc --noEmit
+    pnpm exec tsc --noEmit

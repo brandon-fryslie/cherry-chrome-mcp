@@ -18,8 +18,8 @@ CSS selector-based Chrome DevTools MCP server with full JavaScript debugger supp
 ## Installation
 
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
 
 ## Usage
@@ -57,20 +57,20 @@ Add to your MCP client configuration:
 ### Development
 
 ```bash
-npm run dev          # Watch mode
-npm run build        # Build
-npm test             # Run tests
-npm start            # Build and start
+pnpm dev          # Watch mode
+pnpm build        # Build
+pnpm test             # Run tests
+pnpm start            # Build and start
 ```
 
 ### Testing with MCP Inspector
 
 ```bash
 # Legacy mode (23 granular tools)
-npx @modelcontextprotocol/inspector node build/src/index.js
+pnpm dlx @modelcontextprotocol/inspector node build/src/index.js
 
 # Smart mode (19 consolidated tools with dynamic visibility)
-USE_SMART_TOOLS=true npx @modelcontextprotocol/inspector node build/src/index.js
+USE_SMART_TOOLS=true pnpm dlx @modelcontextprotocol/inspector node build/src/index.js
 ```
 
 ## Tool Modes
